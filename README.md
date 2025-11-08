@@ -1,6 +1,6 @@
 # CyberStrikeAI
 
-基于Golang和Gin框架的AI驱动自主渗透测试平台，使用MCP（Model Context Protocol）协议集成安全工具，实现智能化的安全测试和漏洞发现。
+🚀 **下一代AI自主渗透测试平台** - 基于Golang构建，集成98+安全工具，通过MCP协议实现AI智能决策与自动化执行，让安全测试像对话一样简单。
   ![详情预览](./img/效果1.png)
 
 ## ✨ 功能特性

@@ -24,41 +24,56 @@ parameters:
     type: "string"
     description: "目标URL"
     required: true
+    position: 0
+    format: "positional"
   
   - name: "method"
     type: "string"
     description: "HTTP方法（GET, POST, PUT, DELETE等）"
     required: false
     default: "GET"
+    flag: "-X"
+    format: "flag"
   
   - name: "data"
     type: "string"
-    description: "请求数据/参数（JSON格式）"
+    description: "请求数据/参数（JSON格式或表单数据）"
     required: false
+    flag: "-d"
+    format: "flag"
   
   - name: "headers"
     type: "string"
-    description: "自定义请求头（JSON格式）"
+    description: "自定义请求头（JSON格式，如 {\"Content-Type\": \"application/json\"}，或直接是 \"Header: Value\" 格式）"
     required: false
+    flag: "-H"
+    format: "flag"
   
   - name: "cookies"
     type: "string"
-    description: "自定义Cookie（JSON格式）"
+    description: "自定义Cookie（格式：name1=value1; name2=value2）"
     required: false
+    flag: "-b"
+    format: "flag"
   
   - name: "action"
     type: "string"
-    description: "要执行的操作（request, spider, proxy_history, repeater, intruder）"
+    description: "要执行的操作（request, spider, proxy_history, repeater, intruder）。注意：此参数仅用于标识操作类型，不会传递给curl命令。"
     required: false
     default: "request"
+    # action 参数不传递给 curl，仅用于工具内部逻辑
 
   - name: "additional_args"
     type: "string"
     description: |
-      额外的http-framework-test参数。用于传递未在参数列表中定义的http-framework-test选项。
+      额外的curl参数。用于传递未在参数列表中定义的curl选项。
       
       **示例值：**
-      - 根据工具特性添加常用参数示例
+      - "-v": 详细输出
+      - "-L": 跟随重定向
+      - "-k": 忽略SSL证书错误
+      - "-s": 静默模式
+      - "-o output.txt": 输出到文件
       
       **注意事项：**
       - 多个参数用空格分隔

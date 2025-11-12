@@ -5,7 +5,7 @@ let currentConversationId = null;
 const progressTaskState = new Map();
 // 活跃任务刷新定时器
 let activeTaskInterval = null;
-const ACTIVE_TASK_REFRESH_INTERVAL = 5000; // 5秒检查一次，提供更实时的任务状态反馈
+const ACTIVE_TASK_REFRESH_INTERVAL = 10000; // 10秒检查一次，提供更实时的任务状态反馈
 
 function registerProgressTask(progressId, conversationId = null) {
     const state = progressTaskState.get(progressId) || {};

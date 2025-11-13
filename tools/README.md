@@ -6,20 +6,20 @@
 
 ## 配置文件格式
 
-每个工具配置文件是一个 YAML 文件，包含以下字段：
+每个工具配置文件是一个 YAML 文件。下表列出了当前支持的顶层字段及其必填情况，建议逐项核对后再提交：
 
-### 必需字段
+| 字段 | 必填 | 类型 | 说明 |
+|------|------|------|------|
+| `name` | ✅ | string | 工具唯一标识，建议使用小写字母、数字、短横线组合。 |
+| `command` | ✅ | string | 实际执行的命令或脚本名称，需位于系统 PATH 或写入绝对路径。 |
+| `enabled` | ✅ | bool | 是否注册到 MCP；设为 `false` 时该工具会被忽略。 |
+| `description` | ✅ | string | 详细描述，支持多行 Markdown，供 AI 深度理解及 `resources/read` 查询。 |
+| `short_description` | 可选 | string | 20-50 字摘要，用于工具列表、减少 token 消耗；缺失时会自动截取 `description` 开头。 |
+| `args` | 可选 | string[] | 固定参数，按顺序 prepend 到命令行，常用于定义默认扫描模式。 |
+| `parameters` | 可选 | array | 运行时可配置参数列表，详见「参数定义」章节。 |
+| `arg_mapping` | 可选 | string | 参数映射模式（`auto`/`manual`/`template`），默认 `auto`；除非有特殊需求，无需填写。 |
 
-- `name`: 工具名称（唯一标识符）
-- `command`: 要执行的命令
-- `enabled`: 是否启用（true/false）
-
-### 可选字段
-
-- `args`: 固定参数列表（数组）
-- `short_description`: 简短描述（一句话说明工具用途，用于工具列表，减少token消耗）
-- `description`: 工具详细描述（支持多行文本，用于工具文档和详细说明）
-- `parameters`: 参数定义列表
+> 若某字段填写错误或漏填必填项，系统会在加载时跳过该工具并在日志中输出警告，但不会影响其他工具。
 
 ## 工具描述
 

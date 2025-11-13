@@ -3,9 +3,9 @@
 [English](README.md) | [中文](README_CN.md) 
 
 🚀 **AI自主渗透测试平台** - 基于Golang构建，内置上百个安全工具，支持灵活扩展自定义工具，通过MCP协议实现AI智能决策与自动化执行，让安全测试像对话一样简单。
-- Web模式
+- web模式
   ![详情预览](./img/效果.png)
-- MCP-Stdio / MCP-HTTP 模式
+- mcp-stdio / mcp-http 模式
   ![详情预览](./img/mcp-stdio2.png) 
   
 ## 更新日志

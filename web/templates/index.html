@@ -37,12 +37,20 @@
                 </div>
                 <div class="header-right">
                     <p class="header-subtitle">安全测试平台</p>
-                    <button class="settings-btn" onclick="openSettings()" title="设置">
+                    <div class="header-actions">
+                        <button class="monitor-btn" onclick="openMonitorPanel()" title="MCP 监控面板">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M3 12h4l3 8 4-16 3 8h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span>监控</span>
+                        </button>
+                        <button class="settings-btn" onclick="openSettings()" title="设置">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
-                    </button>
+                        </button>
+                    </div>
                 </div>
             </div>
         </header>
@@ -151,6 +159,48 @@
             <div class="modal-footer">
                 <button class="btn-secondary" onclick="closeSettings()">取消</button>
                 <button class="btn-primary" onclick="applySettings()">应用配置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 监控面板模态框 -->
+    <div id="monitor-modal" class="modal">
+        <div class="modal-content monitor-modal-content">
+            <div class="modal-header">
+                <h2>MCP 监控面板</h2>
+                <span class="modal-close" onclick="closeMonitorPanel()">&times;</span>
+            </div>
+            <div class="monitor-modal-body">
+                <div class="monitor-sections">
+                    <section class="monitor-section monitor-overview">
+                        <div class="section-header">
+                            <h3>执行统计</h3>
+                            <button class="btn-secondary" onclick="refreshMonitorPanel()">刷新</button>
+                        </div>
+                        <div id="monitor-stats" class="monitor-stats-grid">
+                            <div class="monitor-empty">加载中...</div>
+                        </div>
+                    </section>
+                    <section class="monitor-section monitor-executions">
+                        <div class="section-header">
+                            <h3>最新执行记录</h3>
+                            <div class="section-actions">
+                                <label>
+                                    状态筛选
+                                    <select id="monitor-status-filter" onchange="applyMonitorFilters()">
+                                        <option value="all">全部</option>
+                                        <option value="completed">已完成</option>
+                                        <option value="running">执行中</option>
+                                        <option value="failed">失败</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                        <div id="monitor-executions" class="monitor-table-container">
+                            <div class="monitor-empty">加载中...</div>
+                        </div>
+                    </section>
+                </div>
             </div>
         </div>
     </div>

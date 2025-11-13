@@ -1654,12 +1654,16 @@ function closeSettings() {
 window.onclick = function(event) {
     const settingsModal = document.getElementById('settings-modal');
     const mcpModal = document.getElementById('mcp-detail-modal');
+    const monitorModal = document.getElementById('monitor-modal');
     
-    if (event.target == settingsModal) {
+    if (event.target === settingsModal) {
         closeSettings();
     }
-    if (event.target == mcpModal) {
+    if (event.target === mcpModal) {
         closeMCPDetail();
+    }
+    if (event.target === monitorModal) {
+        closeMonitorPanel();
     }
 }
 
@@ -1913,3 +1917,237 @@ async function changePassword() {
     }
 }
 
+
+// 监控面板状态
+const monitorState = {
+    executions: [],
+    stats: {},
+    lastFetchedAt: null
+};
+
+function openMonitorPanel() {
+    const modal = document.getElementById('monitor-modal');
+    if (!modal) {
+        return;
+    }
+    modal.style.display = 'block';
+
+    // 重置显示状态
+    const statsContainer = document.getElementById('monitor-stats');
+    const execContainer = document.getElementById('monitor-executions');
+    if (statsContainer) {
+        statsContainer.innerHTML = '<div class="monitor-empty">加载中...</div>';
+    }
+    if (execContainer) {
+        execContainer.innerHTML = '<div class="monitor-empty">加载中...</div>';
+    }
+
+    const statusFilter = document.getElementById('monitor-status-filter');
+    if (statusFilter) {
+        statusFilter.value = 'all';
+    }
+
+    refreshMonitorPanel();
+}
+
+function closeMonitorPanel() {
+    const modal = document.getElementById('monitor-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function refreshMonitorPanel() {
+    const statsContainer = document.getElementById('monitor-stats');
+    const execContainer = document.getElementById('monitor-executions');
+
+    try {
+        const response = await apiFetch('/api/monitor', { method: 'GET' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || '获取监控数据失败');
+        }
+
+        monitorState.executions = Array.isArray(result.executions) ? result.executions : [];
+        monitorState.stats = result.stats || {};
+        monitorState.lastFetchedAt = new Date();
+
+        renderMonitorStats(monitorState.stats, monitorState.lastFetchedAt);
+        renderMonitorExecutions(monitorState.executions);
+    } catch (error) {
+        console.error('刷新监控面板失败:', error);
+        if (statsContainer) {
+            statsContainer.innerHTML = `<div class="monitor-error">无法加载统计信息：${escapeHtml(error.message)}</div>`;
+        }
+        if (execContainer) {
+            execContainer.innerHTML = `<div class="monitor-error">无法加载执行记录：${escapeHtml(error.message)}</div>`;
+        }
+    }
+}
+
+function applyMonitorFilters() {
+    const statusFilter = document.getElementById('monitor-status-filter');
+    const status = statusFilter ? statusFilter.value : 'all';
+    renderMonitorExecutions(monitorState.executions, status);
+}
+
+function renderMonitorStats(statsMap = {}, lastFetchedAt = null) {
+    const container = document.getElementById('monitor-stats');
+    if (!container) {
+        return;
+    }
+
+    const entries = Object.values(statsMap);
+    if (entries.length === 0) {
+        container.innerHTML = '<div class="monitor-empty">暂无统计数据</div>';
+        return;
+    }
+
+    // 计算总体汇总
+    const totals = entries.reduce(
+        (acc, item) => {
+            acc.total += item.totalCalls || 0;
+            acc.success += item.successCalls || 0;
+            acc.failed += item.failedCalls || 0;
+            const lastCall = item.lastCallTime ? new Date(item.lastCallTime) : null;
+            if (lastCall && (!acc.lastCallTime || lastCall > acc.lastCallTime)) {
+                acc.lastCallTime = lastCall;
+            }
+            return acc;
+        },
+        { total: 0, success: 0, failed: 0, lastCallTime: null }
+    );
+
+    const successRate = totals.total > 0 ? ((totals.success / totals.total) * 100).toFixed(1) : '0.0';
+    const lastUpdatedText = lastFetchedAt ? lastFetchedAt.toLocaleString('zh-CN') : 'N/A';
+    const lastCallText = totals.lastCallTime ? totals.lastCallTime.toLocaleString('zh-CN') : '暂无调用';
+
+    let html = `
+        <div class="monitor-stat-card">
+            <h4>总调用次数</h4>
+            <div class="monitor-stat-value">${totals.total}</div>
+            <div class="monitor-stat-meta">成功 ${totals.success} / 失败 ${totals.failed}</div>
+        </div>
+        <div class="monitor-stat-card">
+            <h4>成功率</h4>
+            <div class="monitor-stat-value">${successRate}%</div>
+            <div class="monitor-stat-meta">统计自全部工具调用</div>
+        </div>
+        <div class="monitor-stat-card">
+            <h4>最近一次调用</h4>
+            <div class="monitor-stat-value" style="font-size:1rem;">${lastCallText}</div>
+            <div class="monitor-stat-meta">最后刷新时间：${lastUpdatedText}</div>
+        </div>
+    `;
+
+    // 显示最多前4个工具的统计
+    const topTools = entries
+        .slice()
+        .sort((a, b) => (b.totalCalls || 0) - (a.totalCalls || 0))
+        .slice(0, 4);
+
+    topTools.forEach(tool => {
+        const toolSuccessRate = tool.totalCalls > 0 ? ((tool.successCalls || 0) / tool.totalCalls * 100).toFixed(1) : '0.0';
+        html += `
+            <div class="monitor-stat-card">
+                <h4>${escapeHtml(tool.toolName || '未知工具')}</h4>
+                <div class="monitor-stat-value">${tool.totalCalls || 0}</div>
+                <div class="monitor-stat-meta">
+                    成功 ${tool.successCalls || 0} / 失败 ${tool.failedCalls || 0} · 成功率 ${toolSuccessRate}%
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = `<div class="monitor-stats-grid">${html}</div>`;
+}
+
+function renderMonitorExecutions(executions = [], statusFilter = 'all') {
+    const container = document.getElementById('monitor-executions');
+    if (!container) {
+        return;
+    }
+
+    if (!Array.isArray(executions) || executions.length === 0) {
+        container.innerHTML = '<div class="monitor-empty">暂无执行记录</div>';
+        return;
+    }
+
+    const normalizedStatus = statusFilter === 'all' ? null : statusFilter;
+    const filtered = normalizedStatus
+        ? executions.filter(exec => (exec.status || '').toLowerCase() === normalizedStatus)
+        : executions;
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="monitor-empty">当前筛选条件下暂无记录</div>';
+        return;
+    }
+
+    const rows = filtered
+        .slice(0, 25)
+        .map(exec => {
+            const status = (exec.status || 'unknown').toLowerCase();
+            const statusClass = `monitor-status-chip ${status}`;
+            const statusLabel = getStatusText(status);
+            const startTime = exec.startTime ? new Date(exec.startTime).toLocaleString('zh-CN') : '未知';
+            const duration = formatExecutionDuration(exec.startTime, exec.endTime);
+            const toolName = escapeHtml(exec.toolName || '未知工具');
+            const executionId = escapeHtml(exec.id || '');
+            return `
+                <tr>
+                    <td>${toolName}</td>
+                    <td><span class="${statusClass}">${statusLabel}</span></td>
+                    <td>${startTime}</td>
+                    <td>${duration}</td>
+                    <td>
+                        <div class="monitor-execution-actions">
+                            <button class="btn-secondary" onclick="showMCPDetail('${executionId}')">查看详情</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        })
+        .join('');
+
+    container.innerHTML = `
+        <div class="monitor-table-container">
+            <table class="monitor-table">
+                <thead>
+                    <tr>
+                        <th>工具</th>
+                        <th>状态</th>
+                        <th>开始时间</th>
+                        <th>耗时</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+}
+
+
+function formatExecutionDuration(start, end) {
+    if (!start) {
+        return '未知';
+    }
+    const startTime = new Date(start);
+    const endTime = end ? new Date(end) : new Date();
+    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+        return '未知';
+    }
+    const diffMs = Math.max(0, endTime - startTime);
+    const seconds = Math.floor(diffMs / 1000);
+    if (seconds < 60) {
+        return `${seconds} 秒`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+        const remain = seconds % 60;
+        return remain > 0 ? `${minutes} 分 ${remain} 秒` : `${minutes} 分`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainMinutes = minutes % 60;
+    return remainMinutes > 0 ? `${hours} 小时 ${remainMinutes} 分` : `${hours} 小时`;
+}

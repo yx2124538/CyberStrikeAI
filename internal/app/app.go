@@ -60,8 +60,8 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 		return nil, fmt.Errorf("初始化数据库失败: %w", err)
 	}
 
-	// 创建MCP服务器
-	mcpServer := mcp.NewServer(log.Logger)
+	// 创建MCP服务器（带数据库持久化）
+	mcpServer := mcp.NewServerWithStorage(log.Logger, db)
 
 	// 创建安全工具执行器
 	executor := security.NewExecutor(&cfg.Security, mcpServer, log.Logger)
@@ -91,7 +91,7 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 
 	// 创建处理器
 	agentHandler := handler.NewAgentHandler(agent, db, log.Logger)
-	monitorHandler := handler.NewMonitorHandler(mcpServer, executor, log.Logger)
+	monitorHandler := handler.NewMonitorHandler(mcpServer, executor, db, log.Logger)
 	conversationHandler := handler.NewConversationHandler(db, log.Logger)
 	authHandler := handler.NewAuthHandler(authManager, cfg, configPath, log.Logger)
 	configHandler := handler.NewConfigHandler(configPath, cfg, mcpServer, executor, agent, log.Logger)
@@ -188,7 +188,6 @@ func setupRoutes(
 		protected.GET("/monitor", monitorHandler.Monitor)
 		protected.GET("/monitor/execution/:id", monitorHandler.GetExecution)
 		protected.GET("/monitor/stats", monitorHandler.GetStats)
-		protected.GET("/monitor/vulnerabilities", monitorHandler.GetVulnerabilities)
 
 		// 配置管理
 		protected.GET("/config", configHandler.GetConfig)

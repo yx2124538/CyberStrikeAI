@@ -75,12 +75,41 @@ func (db *DB) initTables() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);`
 
+	// 创建工具执行记录表
+	createToolExecutionsTable := `
+	CREATE TABLE IF NOT EXISTS tool_executions (
+		id TEXT PRIMARY KEY,
+		tool_name TEXT NOT NULL,
+		arguments TEXT NOT NULL,
+		status TEXT NOT NULL,
+		result TEXT,
+		error TEXT,
+		start_time DATETIME NOT NULL,
+		end_time DATETIME,
+		duration_ms INTEGER,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);`
+
+	// 创建工具统计表
+	createToolStatsTable := `
+	CREATE TABLE IF NOT EXISTS tool_stats (
+		tool_name TEXT PRIMARY KEY,
+		total_calls INTEGER NOT NULL DEFAULT 0,
+		success_calls INTEGER NOT NULL DEFAULT 0,
+		failed_calls INTEGER NOT NULL DEFAULT 0,
+		last_call_time DATETIME,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);`
+
 	// 创建索引
 	createIndexes := `
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
 	CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at);
 	CREATE INDEX IF NOT EXISTS idx_process_details_message_id ON process_details(message_id);
 	CREATE INDEX IF NOT EXISTS idx_process_details_conversation_id ON process_details(conversation_id);
+	CREATE INDEX IF NOT EXISTS idx_tool_executions_tool_name ON tool_executions(tool_name);
+	CREATE INDEX IF NOT EXISTS idx_tool_executions_start_time ON tool_executions(start_time);
+	CREATE INDEX IF NOT EXISTS idx_tool_executions_status ON tool_executions(status);
 	`
 
 	if _, err := db.Exec(createConversationsTable); err != nil {
@@ -93,6 +122,14 @@ func (db *DB) initTables() error {
 
 	if _, err := db.Exec(createProcessDetailsTable); err != nil {
 		return fmt.Errorf("创建process_details表失败: %w", err)
+	}
+
+	if _, err := db.Exec(createToolExecutionsTable); err != nil {
+		return fmt.Errorf("创建tool_executions表失败: %w", err)
+	}
+
+	if _, err := db.Exec(createToolStatsTable); err != nil {
+		return fmt.Errorf("创建tool_stats表失败: %w", err)
 	}
 
 	if _, err := db.Exec(createIndexes); err != nil {

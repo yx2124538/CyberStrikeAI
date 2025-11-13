@@ -722,76 +722,12 @@ type Vulnerability struct {
 }
 
 // AnalyzeResults 分析工具执行结果，提取漏洞信息
+// 注意：硬编码的漏洞解析逻辑已移除，此函数现在返回空数组
+// 漏洞检测应该由工具本身或专门的漏洞扫描工具来完成
 func (e *Executor) AnalyzeResults(toolName string, result *mcp.ToolResult) []Vulnerability {
-	vulnerabilities := []Vulnerability{}
-
-	if result.IsError {
-		return vulnerabilities
-	}
-
-	// 分析输出内容
-	for _, content := range result.Content {
-		if content.Type == "text" {
-			vulns := e.parseToolOutput(toolName, content.Text)
-			vulnerabilities = append(vulnerabilities, vulns...)
-		}
-	}
-
-	return vulnerabilities
-}
-
-// parseToolOutput 解析工具输出
-func (e *Executor) parseToolOutput(toolName, output string) []Vulnerability {
-	vulnerabilities := []Vulnerability{}
-
-	// 简单的漏洞检测逻辑
-	outputLower := strings.ToLower(output)
-
-	// SQL注入检测
-	if strings.Contains(outputLower, "sql injection") || strings.Contains(outputLower, "sqli") {
-		vulnerabilities = append(vulnerabilities, Vulnerability{
-			ID:          fmt.Sprintf("sql-%d", time.Now().Unix()),
-			Type:        "SQL Injection",
-			Severity:    "high",
-			Title:       "SQL注入漏洞",
-			Description: "检测到潜在的SQL注入漏洞",
-			FoundAt:     time.Now(),
-			Details:     output,
-		})
-	}
-
-	// XSS检测
-	if strings.Contains(outputLower, "xss") || strings.Contains(outputLower, "cross-site scripting") {
-		vulnerabilities = append(vulnerabilities, Vulnerability{
-			ID:          fmt.Sprintf("xss-%d", time.Now().Unix()),
-			Type:        "XSS",
-			Severity:  "medium",
-			Title:       "跨站脚本攻击漏洞",
-			Description: "检测到潜在的XSS漏洞",
-			FoundAt:     time.Now(),
-			Details:     output,
-		})
-	}
-
-	// 开放端口检测
-	if toolName == "nmap" {
-		lines := strings.Split(output, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "open") && strings.Contains(line, "port") {
-				vulnerabilities = append(vulnerabilities, Vulnerability{
-					ID:          fmt.Sprintf("port-%d", time.Now().Unix()),
-					Type:        "Open Port",
-					Severity:    "low",
-					Title:       "开放端口",
-					Description: fmt.Sprintf("发现开放端口: %s", line),
-					FoundAt:     time.Now(),
-					Details:     line,
-				})
-			}
-		}
-	}
-
-	return vulnerabilities
+	// 不再进行硬编码的漏洞解析
+	// 漏洞检测应该由工具本身（如sqlmap、nmap等）的输出结果来体现
+	return []Vulnerability{}
 }
 
 // GetVulnerabilityReport 生成漏洞报告

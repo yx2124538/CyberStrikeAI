@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"cyberstrike-ai/internal/database"
 	"cyberstrike-ai/internal/mcp"
 	"cyberstrike-ai/internal/security"
 	"github.com/gin-gonic/gin"
@@ -14,61 +15,70 @@ import (
 type MonitorHandler struct {
 	mcpServer *mcp.Server
 	executor  *security.Executor
+	db        *database.DB
 	logger    *zap.Logger
-	vulns     []security.Vulnerability
 }
 
 // NewMonitorHandler 创建新的监控处理器
-func NewMonitorHandler(mcpServer *mcp.Server, executor *security.Executor, logger *zap.Logger) *MonitorHandler {
+func NewMonitorHandler(mcpServer *mcp.Server, executor *security.Executor, db *database.DB, logger *zap.Logger) *MonitorHandler {
 	return &MonitorHandler{
 		mcpServer: mcpServer,
 		executor:  executor,
+		db:        db,
 		logger:    logger,
-		vulns:     []security.Vulnerability{},
 	}
 }
 
 // MonitorResponse 监控响应
 type MonitorResponse struct {
-	Executions    []*mcp.ToolExecution `json:"executions"`
-	Stats         map[string]*mcp.ToolStats `json:"stats"`
-	Vulnerabilities []security.Vulnerability `json:"vulnerabilities"`
-	Report        map[string]interface{} `json:"report"`
-	Timestamp     time.Time              `json:"timestamp"`
+	Executions []*mcp.ToolExecution      `json:"executions"`
+	Stats      map[string]*mcp.ToolStats `json:"stats"`
+	Timestamp  time.Time                  `json:"timestamp"`
 }
 
 // Monitor 获取监控信息
 func (h *MonitorHandler) Monitor(c *gin.Context) {
-	// 获取所有执行记录
-	executions := h.mcpServer.GetAllExecutions()
-
-	// 分析执行结果，提取漏洞
-	for _, exec := range executions {
-		if exec.Status == "completed" && exec.Result != nil {
-			vulns := h.executor.AnalyzeResults(exec.ToolName, exec.Result)
-			h.vulns = append(h.vulns, vulns...)
-		}
-	}
-
-	// 获取统计信息
-	stats := h.mcpServer.GetStats()
-
-	// 生成报告
-	report := h.executor.GetVulnerabilityReport(h.vulns)
+	executions := h.loadExecutions()
+	stats := h.loadStats()
 
 	c.JSON(http.StatusOK, MonitorResponse{
-		Executions:     executions,
-		Stats:          stats,
-		Vulnerabilities: h.vulns,
-		Report:         report,
-		Timestamp:      time.Now(),
+		Executions: executions,
+		Stats:      stats,
+		Timestamp:  time.Now(),
 	})
 }
+
+func (h *MonitorHandler) loadExecutions() []*mcp.ToolExecution {
+	if h.db == nil {
+		return h.mcpServer.GetAllExecutions()
+	}
+
+	executions, err := h.db.LoadToolExecutions()
+	if err != nil {
+		h.logger.Warn("从数据库加载执行记录失败，回退到内存数据", zap.Error(err))
+		return h.mcpServer.GetAllExecutions()
+	}
+	return executions
+}
+
+func (h *MonitorHandler) loadStats() map[string]*mcp.ToolStats {
+	if h.db == nil {
+		return h.mcpServer.GetStats()
+	}
+
+	stats, err := h.db.LoadToolStats()
+	if err != nil {
+		h.logger.Warn("从数据库加载统计信息失败，回退到内存数据", zap.Error(err))
+		return h.mcpServer.GetStats()
+	}
+	return stats
+}
+
 
 // GetExecution 获取特定执行记录
 func (h *MonitorHandler) GetExecution(c *gin.Context) {
 	id := c.Param("id")
-	
+
 	exec, exists := h.mcpServer.GetExecution(id)
 	if !exists {
 		c.JSON(http.StatusNotFound, gin.H{"error": "执行记录未找到"})
@@ -80,13 +90,7 @@ func (h *MonitorHandler) GetExecution(c *gin.Context) {
 
 // GetStats 获取统计信息
 func (h *MonitorHandler) GetStats(c *gin.Context) {
-	stats := h.mcpServer.GetStats()
+	stats := h.loadStats()
 	c.JSON(http.StatusOK, stats)
-}
-
-// GetVulnerabilities 获取漏洞列表
-func (h *MonitorHandler) GetVulnerabilities(c *gin.Context) {
-	report := h.executor.GetVulnerabilityReport(h.vulns)
-	c.JSON(http.StatusOK, report)
 }
 

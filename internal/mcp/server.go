@@ -15,14 +15,25 @@ import (
 	"go.uber.org/zap"
 )
 
+// MonitorStorage 监控数据存储接口
+type MonitorStorage interface {
+	SaveToolExecution(exec *ToolExecution) error
+	LoadToolExecutions() ([]*ToolExecution, error)
+	GetToolExecution(id string) (*ToolExecution, error)
+	SaveToolStats(toolName string, stats *ToolStats) error
+	LoadToolStats() (map[string]*ToolStats, error)
+	UpdateToolStats(toolName string, totalCalls, successCalls, failedCalls int, lastCallTime *time.Time) error
+}
+
 // Server MCP服务器
 type Server struct {
 	tools      map[string]ToolHandler
-	toolDefs   map[string]Tool  // 工具定义
+	toolDefs   map[string]Tool // 工具定义
 	executions map[string]*ToolExecution
 	stats      map[string]*ToolStats
-	prompts    map[string]*Prompt  // 提示词模板
+	prompts    map[string]*Prompt   // 提示词模板
 	resources  map[string]*Resource // 资源
+	storage    MonitorStorage       // 可选的持久化存储
 	mu         sync.RWMutex
 	logger     *zap.Logger
 }
@@ -32,6 +43,11 @@ type ToolHandler func(ctx context.Context, args map[string]interface{}) (*ToolRe
 
 // NewServer 创建新的MCP服务器
 func NewServer(logger *zap.Logger) *Server {
+	return NewServerWithStorage(logger, nil)
+}
+
+// NewServerWithStorage 创建新的MCP服务器（带持久化存储）
+func NewServerWithStorage(logger *zap.Logger, storage MonitorStorage) *Server {
 	s := &Server{
 		tools:      make(map[string]ToolHandler),
 		toolDefs:   make(map[string]Tool),
@@ -39,13 +55,14 @@ func NewServer(logger *zap.Logger) *Server {
 		stats:      make(map[string]*ToolStats),
 		prompts:    make(map[string]*Prompt),
 		resources:  make(map[string]*Resource),
+		storage:    storage,
 		logger:     logger,
 	}
-	
+
 	// 初始化默认提示词和资源
 	s.initDefaultPrompts()
 	s.initDefaultResources()
-	
+
 	return s
 }
 
@@ -55,7 +72,7 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandler) {
 	defer s.mu.Unlock()
 	s.tools[tool.Name] = handler
 	s.toolDefs[tool.Name] = tool
-	
+
 	// 自动为工具创建资源文档
 	resourceURI := fmt.Sprintf("tool://%s", tool.Name)
 	s.resources[resourceURI] = &Resource{
@@ -70,11 +87,11 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandler) {
 func (s *Server) ClearTools() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// 清空工具和工具定义
 	s.tools = make(map[string]ToolHandler)
 	s.toolDefs = make(map[string]Tool)
-	
+
 	// 清空工具相关的资源（保留其他资源）
 	newResources := make(map[string]*Resource)
 	for uri, resource := range s.resources {
@@ -107,7 +124,7 @@ func (s *Server) HandleHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 处理消息
 	response := s.handleMessage(&msg)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
@@ -116,7 +133,7 @@ func (s *Server) HandleHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMessage(msg *Message) *Message {
 	// 检查是否是通知（notification）- 通知没有id字段，不需要响应
 	isNotification := msg.ID.Value() == nil || msg.ID.String() == ""
-	
+
 	// 如果不是通知且ID为空，生成新的UUID
 	if !isNotification && msg.ID.String() == "" {
 		msg.ID = MessageID{value: uuid.New().String()}
@@ -239,7 +256,6 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 		}
 	}
 
-	// 创建执行记录
 	executionID := uuid.New().String()
 	execution := &ToolExecution{
 		ID:        executionID,
@@ -253,10 +269,12 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 	s.executions[executionID] = execution
 	s.mu.Unlock()
 
-	// 更新统计
-	s.updateStats(req.Name, false)
+	if s.storage != nil {
+		if err := s.storage.SaveToolExecution(execution); err != nil {
+			s.logger.Warn("保存执行记录到数据库失败", zap.Error(err))
+		}
+	}
 
-	// 执行工具
 	s.mu.RLock()
 	handler, exists := s.tools[req.Name]
 	s.mu.RUnlock()
@@ -266,6 +284,19 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 		execution.Error = "Tool not found"
 		now := time.Now()
 		execution.EndTime = &now
+		execution.Duration = now.Sub(execution.StartTime)
+
+		if s.storage != nil {
+			if err := s.storage.SaveToolExecution(execution); err != nil {
+				s.logger.Warn("保存执行记录到数据库失败", zap.Error(err))
+			}
+			s.mu.Lock()
+			delete(s.executions, executionID)
+			s.mu.Unlock()
+		}
+
+		s.updateStats(req.Name, true)
+
 		return &Message{
 			ID:      msg.ID,
 			Type:    MessageTypeError,
@@ -274,7 +305,6 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 		}
 	}
 
-	// 同步执行所有工具，确保错误能正确返回
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -284,24 +314,63 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 	)
 
 	result, err := handler(ctx, req.Arguments)
-	
-	s.mu.Lock()
 	now := time.Now()
+	var failed bool
+	var finalResult *ToolResult
+
+	s.mu.Lock()
 	execution.EndTime = &now
 	execution.Duration = now.Sub(execution.StartTime)
-	
+
 	if err != nil {
 		execution.Status = "failed"
 		execution.Error = err.Error()
-		s.updateStats(req.Name, true)
+		failed = true
+	} else if result != nil && result.IsError {
+		execution.Status = "failed"
+		if len(result.Content) > 0 {
+			execution.Error = result.Content[0].Text
+		} else {
+			execution.Error = "工具执行返回错误结果"
+		}
+		execution.Result = result
+		failed = true
+	} else {
+		execution.Status = "completed"
+		if result == nil {
+			result = &ToolResult{
+				Content: []Content{
+					{Type: "text", Text: "工具执行完成，但未返回结果"},
+				},
+			}
+		}
+		execution.Result = result
+		failed = false
+	}
+
+	finalResult = execution.Result
+	s.mu.Unlock()
+
+	if s.storage != nil {
+		if err := s.storage.SaveToolExecution(execution); err != nil {
+			s.logger.Warn("保存执行记录到数据库失败", zap.Error(err))
+		}
+	}
+
+	s.updateStats(req.Name, failed)
+
+	if s.storage != nil {
+		s.mu.Lock()
+		delete(s.executions, executionID)
 		s.mu.Unlock()
-		
+	}
+
+	if err != nil {
 		s.logger.Error("工具执行失败",
 			zap.String("toolName", req.Name),
 			zap.Error(err),
 		)
-		
-		// 返回错误结果
+
 		errorResult, _ := json.Marshal(CallToolResponse{
 			Content: []Content{
 				{Type: "text", Text: fmt.Sprintf("工具执行失败: %v", err)},
@@ -315,40 +384,42 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 			Result:  errorResult,
 		}
 	}
-	
-	// 检查result是否为错误
-	if result != nil && result.IsError {
-		execution.Status = "failed"
-		if len(result.Content) > 0 {
-			execution.Error = result.Content[0].Text
+
+	if finalResult != nil && finalResult.IsError {
+		s.logger.Warn("工具执行返回错误结果",
+			zap.String("toolName", req.Name),
+		)
+
+		errorResult, _ := json.Marshal(CallToolResponse{
+			Content: finalResult.Content,
+			IsError: true,
+		})
+		return &Message{
+			ID:      msg.ID,
+			Type:    MessageTypeResponse,
+			Version: "2.0",
+			Result:  errorResult,
 		}
-		s.updateStats(req.Name, true)
-	} else {
-		execution.Status = "completed"
-		execution.Result = result
-		s.updateStats(req.Name, false)
 	}
-	s.mu.Unlock()
-	
-	// 返回执行结果
-	if result == nil {
-		result = &ToolResult{
+
+	if finalResult == nil {
+		finalResult = &ToolResult{
 			Content: []Content{
 				{Type: "text", Text: "工具执行完成，但未返回结果"},
 			},
 		}
 	}
-	
+
 	resultJSON, _ := json.Marshal(CallToolResponse{
-		Content: result.Content,
-		IsError: result.IsError,
+		Content: finalResult.Content,
+		IsError: false,
 	})
-	
+
 	s.logger.Info("工具执行完成",
 		zap.String("toolName", req.Name),
-		zap.Bool("isError", result.IsError),
+		zap.Bool("isError", finalResult.IsError),
 	)
-	
+
 	return &Message{
 		ID:      msg.ID,
 		Type:    MessageTypeResponse,
@@ -359,6 +430,25 @@ func (s *Server) handleCallTool(msg *Message) *Message {
 
 // updateStats 更新统计信息
 func (s *Server) updateStats(toolName string, failed bool) {
+	now := time.Now()
+	if s.storage != nil {
+		totalCalls := 1
+		successCalls := 0
+		failedCalls := 0
+		if failed {
+			failedCalls = 1
+		} else {
+			successCalls = 1
+		}
+		if err := s.storage.UpdateToolStats(toolName, totalCalls, successCalls, failedCalls, &now); err != nil {
+			s.logger.Warn("保存统计信息到数据库失败", zap.Error(err))
+		}
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.stats[toolName] == nil {
 		s.stats[toolName] = &ToolStats{
 			ToolName: toolName,
@@ -367,7 +457,6 @@ func (s *Server) updateStats(toolName string, failed bool) {
 
 	stats := s.stats[toolName]
 	stats.TotalCalls++
-	now := time.Now()
 	stats.LastCallTime = &now
 
 	if failed {
@@ -377,41 +466,129 @@ func (s *Server) updateStats(toolName string, failed bool) {
 	}
 }
 
-// GetExecution 获取执行记录
+// GetExecution 获取执行记录（先从内存查找，再从数据库查找）
 func (s *Server) GetExecution(id string) (*ToolExecution, bool) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	exec, exists := s.executions[id]
-	return exec, exists
+	s.mu.RUnlock()
+
+	if exists {
+		return exec, true
+	}
+
+	if s.storage != nil {
+		exec, err := s.storage.GetToolExecution(id)
+		if err == nil {
+			return exec, true
+		}
+	}
+
+	return nil, false
 }
 
-// GetAllExecutions 获取所有执行记录
+// loadHistoricalData 从数据库加载历史数据
+func (s *Server) loadHistoricalData() {
+	if s.storage == nil {
+		return
+	}
+
+	// 加载历史执行记录（最近1000条）
+	executions, err := s.storage.LoadToolExecutions()
+	if err != nil {
+		s.logger.Warn("加载历史执行记录失败", zap.Error(err))
+	} else {
+		s.mu.Lock()
+		for _, exec := range executions {
+			// 只加载最近1000条，避免内存占用过大
+			if len(s.executions) < 1000 {
+				s.executions[exec.ID] = exec
+			}
+		}
+		s.mu.Unlock()
+		s.logger.Info("加载历史执行记录", zap.Int("count", len(executions)))
+	}
+
+	// 加载历史统计信息
+	stats, err := s.storage.LoadToolStats()
+	if err != nil {
+		s.logger.Warn("加载历史统计信息失败", zap.Error(err))
+	} else {
+		s.mu.Lock()
+		for k, v := range stats {
+			s.stats[k] = v
+		}
+		s.mu.Unlock()
+		s.logger.Info("加载历史统计信息", zap.Int("count", len(stats)))
+	}
+}
+
+// GetAllExecutions 获取所有执行记录（合并内存和数据库）
 func (s *Server) GetAllExecutions() []*ToolExecution {
+	if s.storage != nil {
+		dbExecutions, err := s.storage.LoadToolExecutions()
+		if err == nil {
+			execMap := make(map[string]*ToolExecution)
+			for _, exec := range dbExecutions {
+				if _, exists := execMap[exec.ID]; !exists {
+					execMap[exec.ID] = exec
+				}
+			}
+
+			s.mu.RLock()
+			for id, exec := range s.executions {
+				if _, exists := execMap[id]; !exists {
+					execMap[id] = exec
+				}
+			}
+			s.mu.RUnlock()
+
+			result := make([]*ToolExecution, 0, len(execMap))
+			for _, exec := range execMap {
+				result = append(result, exec)
+			}
+			return result
+		} else {
+			s.logger.Warn("从数据库加载执行记录失败", zap.Error(err))
+		}
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	executions := make([]*ToolExecution, 0, len(s.executions))
+
+	memExecutions := make([]*ToolExecution, 0, len(s.executions))
 	for _, exec := range s.executions {
-		executions = append(executions, exec)
+		memExecutions = append(memExecutions, exec)
 	}
-	return executions
+	return memExecutions
 }
 
-// GetStats 获取统计信息
+// GetStats 获取统计信息（合并内存和数据库）
 func (s *Server) GetStats() map[string]*ToolStats {
+	if s.storage != nil {
+		dbStats, err := s.storage.LoadToolStats()
+		if err == nil {
+			return dbStats
+		}
+		s.logger.Warn("从数据库加载统计信息失败", zap.Error(err))
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	stats := make(map[string]*ToolStats)
+
+	memStats := make(map[string]*ToolStats)
 	for k, v := range s.stats {
-		stats[k] = v
+		statCopy := *v
+		memStats[k] = &statCopy
 	}
-	return stats
+
+	return memStats
 }
 
 // GetAllTools 获取所有已注册的工具（用于Agent动态获取工具列表）
 func (s *Server) GetAllTools() []Tool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	tools := make([]Tool, 0, len(s.toolDefs))
 	for _, tool := range s.toolDefs {
 		tools = append(tools, tool)
@@ -443,37 +620,80 @@ func (s *Server) CallTool(ctx context.Context, toolName string, args map[string]
 	s.executions[executionID] = execution
 	s.mu.Unlock()
 
-	// 更新统计
-	s.updateStats(toolName, false)
+	if s.storage != nil {
+		if err := s.storage.SaveToolExecution(execution); err != nil {
+			s.logger.Warn("保存执行记录到数据库失败", zap.Error(err))
+		}
+	}
 
-	// 执行工具
 	result, err := handler(ctx, args)
 
 	s.mu.Lock()
 	now := time.Now()
 	execution.EndTime = &now
 	execution.Duration = now.Sub(execution.StartTime)
+	var failed bool
+	var finalResult *ToolResult
 
 	if err != nil {
 		execution.Status = "failed"
 		execution.Error = err.Error()
-		s.updateStats(toolName, true)
-		s.mu.Unlock()
-		return nil, executionID, err
+		failed = true
+	} else if result != nil && result.IsError {
+		execution.Status = "failed"
+		if len(result.Content) > 0 {
+			execution.Error = result.Content[0].Text
+		} else {
+			execution.Error = "工具执行返回错误结果"
+		}
+		execution.Result = result
+		failed = true
+		finalResult = result
 	} else {
 		execution.Status = "completed"
+		if result == nil {
+			result = &ToolResult{
+				Content: []Content{
+					{Type: "text", Text: "工具执行完成，但未返回结果"},
+				},
+			}
+		}
 		execution.Result = result
-		s.updateStats(toolName, false)
-		s.mu.Unlock()
-		return result, executionID, nil
+		finalResult = result
+		failed = false
 	}
+
+	if finalResult == nil {
+		finalResult = execution.Result
+	}
+	s.mu.Unlock()
+
+	if s.storage != nil {
+		if err := s.storage.SaveToolExecution(execution); err != nil {
+			s.logger.Warn("保存执行记录到数据库失败", zap.Error(err))
+		}
+	}
+
+	s.updateStats(toolName, failed)
+
+	if s.storage != nil {
+		s.mu.Lock()
+		delete(s.executions, executionID)
+		s.mu.Unlock()
+	}
+
+	if err != nil {
+		return nil, executionID, err
+	}
+
+	return finalResult, executionID, nil
 }
 
 // initDefaultPrompts 初始化默认提示词模板
 func (s *Server) initDefaultPrompts() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// 网络安全测试提示词
 	s.prompts["security_scan"] = &Prompt{
 		Name:        "security_scan",
@@ -483,7 +703,7 @@ func (s *Server) initDefaultPrompts() {
 			{Name: "scan_type", Description: "扫描类型（port, vuln, web等）", Required: false},
 		},
 	}
-	
+
 	// 渗透测试提示词
 	s.prompts["penetration_test"] = &Prompt{
 		Name:        "penetration_test",
@@ -509,7 +729,7 @@ func (s *Server) handleListPrompts(msg *Message) *Message {
 		prompts = append(prompts, *prompt)
 	}
 	s.mu.RUnlock()
-	
+
 	response := ListPromptsResponse{
 		Prompts: prompts,
 	}
@@ -533,11 +753,11 @@ func (s *Server) handleGetPrompt(msg *Message) *Message {
 			Error:   &Error{Code: -32602, Message: "Invalid params"},
 		}
 	}
-	
+
 	s.mu.RLock()
 	prompt, exists := s.prompts[req.Name]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		return &Message{
 			ID:      msg.ID,
@@ -546,10 +766,10 @@ func (s *Server) handleGetPrompt(msg *Message) *Message {
 			Error:   &Error{Code: -32601, Message: "Prompt not found"},
 		}
 	}
-	
+
 	// 根据提示词名称生成消息
 	messages := s.generatePromptMessages(prompt, req.Arguments)
-	
+
 	response := GetPromptResponse{
 		Messages: messages,
 	}
@@ -565,7 +785,7 @@ func (s *Server) handleGetPrompt(msg *Message) *Message {
 // generatePromptMessages 生成提示词消息
 func (s *Server) generatePromptMessages(prompt *Prompt, args map[string]interface{}) []PromptMessage {
 	messages := []PromptMessage{}
-	
+
 	switch prompt.Name {
 	case "security_scan":
 		target, _ := args["target"].(string)
@@ -573,40 +793,40 @@ func (s *Server) generatePromptMessages(prompt *Prompt, args map[string]interfac
 		if scanType == "" {
 			scanType = "comprehensive"
 		}
-		
+
 		content := fmt.Sprintf(`请对目标 %s 执行%s安全扫描。包括：
 1. 端口扫描和服务识别
 2. 漏洞检测
 3. Web应用安全测试
 4. 生成详细的安全报告`, target, scanType)
-		
+
 		messages = append(messages, PromptMessage{
 			Role:    "user",
 			Content: content,
 		})
-		
+
 	case "penetration_test":
 		target, _ := args["target"].(string)
 		scope, _ := args["scope"].(string)
-		
+
 		content := fmt.Sprintf(`请对目标 %s 执行渗透测试。`, target)
 		if scope != "" {
 			content += fmt.Sprintf("测试范围：%s", scope)
 		}
 		content += "\n请按照OWASP Top 10进行全面的安全测试。"
-		
+
 		messages = append(messages, PromptMessage{
 			Role:    "user",
 			Content: content,
 		})
-		
+
 	default:
 		messages = append(messages, PromptMessage{
 			Role:    "user",
 			Content: "请执行安全测试任务",
 		})
 	}
-	
+
 	return messages
 }
 
@@ -618,7 +838,7 @@ func (s *Server) handleListResources(msg *Message) *Message {
 		resources = append(resources, *resource)
 	}
 	s.mu.RUnlock()
-	
+
 	response := ListResourcesResponse{
 		Resources: resources,
 	}
@@ -642,11 +862,11 @@ func (s *Server) handleReadResource(msg *Message) *Message {
 			Error:   &Error{Code: -32602, Message: "Invalid params"},
 		}
 	}
-	
+
 	s.mu.RLock()
 	resource, exists := s.resources[req.URI]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		return &Message{
 			ID:      msg.ID,
@@ -655,10 +875,10 @@ func (s *Server) handleReadResource(msg *Message) *Message {
 			Error:   &Error{Code: -32601, Message: "Resource not found"},
 		}
 	}
-	
+
 	// 生成资源内容
 	content := s.generateResourceContent(resource)
-	
+
 	response := ReadResourceResponse{
 		Contents: []ResourceContent{content},
 	}
@@ -677,7 +897,7 @@ func (s *Server) generateResourceContent(resource *Resource) ResourceContent {
 		URI:      resource.URI,
 		MimeType: resource.MimeType,
 	}
-	
+
 	// 如果是工具资源，生成详细文档
 	if strings.HasPrefix(resource.URI, "tool://") {
 		toolName := strings.TrimPrefix(resource.URI, "tool://")
@@ -686,116 +906,36 @@ func (s *Server) generateResourceContent(resource *Resource) ResourceContent {
 		// 其他资源使用描述或默认内容
 		content.Text = resource.Description
 	}
-	
+
 	return content
 }
 
 // generateToolDocumentation 生成工具文档
+// 注意：硬编码的工具文档已移除，现在只使用工具定义中的信息
 func (s *Server) generateToolDocumentation(toolName string, resource *Resource) string {
 	// 获取工具定义以获取更详细的信息
 	s.mu.RLock()
 	tool, hasTool := s.toolDefs[toolName]
 	s.mu.RUnlock()
-	
-	// 为常见工具生成详细文档
-	switch toolName {
-	case "nmap":
-		return `Nmap (Network Mapper) 是一个强大的网络扫描工具。
 
-主要功能：
-- 端口扫描：发现目标主机开放的端口
-- 服务识别：识别运行在端口上的服务
-- 版本检测：检测服务版本信息
-- 操作系统检测：识别目标操作系统
-
-常用命令：
-- nmap -sT target          # TCP连接扫描
-- nmap -sV target          # 版本检测
-- nmap -sC target          # 默认脚本扫描
-- nmap -p 1-1000 target    # 扫描指定端口范围
-
-参数说明：
-- target: 目标IP地址或域名（必需）
-- ports: 端口范围，例如: 1-1000（可选）`
-		
-	case "sqlmap":
-		return `SQLMap 是一个自动化的SQL注入检测和利用工具。
-
-主要功能：
-- 自动检测SQL注入漏洞
-- 数据库指纹识别
-- 数据提取
-- 文件系统访问
-
-常用命令：
-- sqlmap -u "http://target.com/page?id=1"  # 检测URL参数
-- sqlmap -u "http://target.com" --forms    # 检测表单
-- sqlmap -u "http://target.com" --dbs      # 列出数据库
-
-参数说明：
-- url: 目标URL（必需）`
-		
-	case "nikto":
-		return `Nikto 是一个Web服务器扫描工具。
-
-主要功能：
-- Web服务器漏洞扫描
-- 检测过时的服务器软件
-- 检测危险文件和程序
-- 检测服务器配置问题
-
-常用命令：
-- nikto -h target           # 扫描目标主机
-- nikto -h target -p 80,443 # 扫描指定端口
-
-参数说明：
-- target: 目标URL（必需）`
-		
-	case "dirb":
-		return `Dirb 是一个Web内容扫描器。
-
-主要功能：
-- 扫描Web目录和文件
-- 发现隐藏的目录和文件
-- 支持自定义字典
-
-常用命令：
-- dirb url                  # 扫描目标URL
-- dirb url -w wordlist.txt  # 使用自定义字典
-
-参数说明：
-- target: 目标URL（必需）`
-		
-	case "exec":
-		return `Exec 工具用于执行系统命令。
-
-⚠️ 警告：此工具可以执行任意系统命令，请谨慎使用！
-
-参数说明：
-- command: 要执行的系统命令（必需）
-- shell: 使用的shell，默认为sh（可选）
-- workdir: 工作目录（可选）`
-		
-	default:
-		// 对于其他工具，使用工具定义中的描述信息
-		if hasTool {
-			doc := fmt.Sprintf("%s\n\n", resource.Description)
-			if tool.InputSchema != nil {
-				if props, ok := tool.InputSchema["properties"].(map[string]interface{}); ok {
-					doc += "参数说明：\n"
-					for paramName, paramInfo := range props {
-						if paramMap, ok := paramInfo.(map[string]interface{}); ok {
-							if desc, ok := paramMap["description"].(string); ok {
-								doc += fmt.Sprintf("- %s: %s\n", paramName, desc)
-							}
+	// 使用工具定义中的描述信息
+	if hasTool {
+		doc := fmt.Sprintf("%s\n\n", resource.Description)
+		if tool.InputSchema != nil {
+			if props, ok := tool.InputSchema["properties"].(map[string]interface{}); ok {
+				doc += "参数说明：\n"
+				for paramName, paramInfo := range props {
+					if paramMap, ok := paramInfo.(map[string]interface{}); ok {
+						if desc, ok := paramMap["description"].(string); ok {
+							doc += fmt.Sprintf("- %s: %s\n", paramName, desc)
 						}
 					}
 				}
 			}
-			return doc
 		}
-		return resource.Description
+		return doc
 	}
+	return resource.Description
 }
 
 // handleSamplingRequest 处理采样请求
@@ -809,13 +949,13 @@ func (s *Server) handleSamplingRequest(msg *Message) *Message {
 			Error:   &Error{Code: -32602, Message: "Invalid params"},
 		}
 	}
-	
+
 	// 注意：采样功能通常需要连接到实际的LLM服务
 	// 这里返回一个占位符响应，实际实现需要集成LLM API
 	s.logger.Warn("Sampling request received but not fully implemented",
 		zap.Any("request", req),
 	)
-	
+
 	response := SamplingResponse{
 		Content: []SamplingContent{
 			{
@@ -908,4 +1048,3 @@ func (s *Server) sendError(w http.ResponseWriter, id interface{}, code int, mess
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
-

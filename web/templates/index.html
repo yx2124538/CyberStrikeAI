@@ -115,7 +115,10 @@
                         <div class="tools-actions">
                             <button class="btn-secondary" onclick="selectAllTools()">全选</button>
                             <button class="btn-secondary" onclick="deselectAllTools()">全不选</button>
-                            <input type="text" id="tools-search" placeholder="搜索工具..." oninput="filterTools()" />
+                            <div class="search-box">
+                                <input type="text" id="tools-search" placeholder="搜索工具..." onkeypress="handleSearchKeyPress(event)" oninput="if(this.value.trim() === '') clearSearch()" />
+                                <button class="btn-search" onclick="searchTools()" title="搜索">🔍</button>
+                            </div>
                         </div>
                         <div id="tools-list" class="tools-list"></div>
                     </div>
@@ -246,6 +249,8 @@
 
     <!-- Marked.js for Markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <!-- DOMPurify for HTML sanitization to prevent XSS -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

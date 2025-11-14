@@ -923,7 +923,7 @@ function addTimelineItem(timeline, type, options) {
     let content = `
         <div class="timeline-item-header">
             <span class="timeline-item-time">${time}</span>
-            <span class="timeline-item-title">${options.title}</span>
+            <span class="timeline-item-title">${escapeHtml(options.title || '')}</span>
         </div>
     `;
     
@@ -938,7 +938,7 @@ function addTimelineItem(timeline, type, options) {
                 <div class="tool-details">
                     <div class="tool-arg-section">
                         <strong>参数:</strong>
-                        <pre class="tool-args">${JSON.stringify(args, null, 2)}</pre>
+                        <pre class="tool-args">${escapeHtml(JSON.stringify(args, null, 2))}</pre>
                     </div>
                 </div>
             </div>
@@ -947,12 +947,14 @@ function addTimelineItem(timeline, type, options) {
         const data = options.data;
         const isError = data.isError || !data.success;
         const result = data.result || data.error || '无结果';
+        // 确保 result 是字符串
+        const resultStr = typeof result === 'string' ? result : JSON.stringify(result);
         content += `
             <div class="timeline-item-content">
                 <div class="tool-result-section ${isError ? 'error' : 'success'}">
                     <strong>执行结果:</strong>
-                    <pre class="tool-result">${escapeHtml(result)}</pre>
-                    ${data.executionId ? `<div class="tool-execution-id">执行ID: <code>${data.executionId}</code></div>` : ''}
+                    <pre class="tool-result">${escapeHtml(resultStr)}</pre>
+                    ${data.executionId ? `<div class="tool-execution-id">执行ID: <code>${escapeHtml(data.executionId)}</code></div>` : ''}
                 </div>
             </div>
         `;
@@ -1006,24 +1008,53 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null) {
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
     
-    // 解析 Markdown 格式
+    // 解析 Markdown 或 HTML 格式
     let formattedContent;
-    if (typeof marked !== 'undefined') {
-        // 使用 marked.js 解析 Markdown
+    
+    // 先使用 DOMPurify 清理（如果可用），这样可以处理已经是 HTML 的内容
+    if (typeof DOMPurify !== 'undefined') {
+        // 配置 DOMPurify 允许的标签和属性
+        const sanitizeConfig = {
+            // 允许基本的 Markdown 格式化标签
+            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr'],
+            ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'class'],
+            ALLOW_DATA_ATTR: false,
+        };
+        
+        // 如果内容看起来已经是 HTML（包含 HTML 标签），直接清理
+        // 否则先用 marked.js 解析 Markdown，再清理
+        if (typeof marked !== 'undefined' && !/<[a-z][\s\S]*>/i.test(content)) {
+            // 内容不包含 HTML 标签，可能是 Markdown，使用 marked.js 解析
+            try {
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true,
+                });
+                let parsedContent = marked.parse(content);
+                formattedContent = DOMPurify.sanitize(parsedContent, sanitizeConfig);
+            } catch (e) {
+                console.error('Markdown 解析失败:', e);
+                // 降级处理：直接清理原始内容
+                formattedContent = DOMPurify.sanitize(content, sanitizeConfig);
+            }
+        } else {
+            // 内容包含 HTML 标签或 marked.js 不可用，直接清理
+            formattedContent = DOMPurify.sanitize(content, sanitizeConfig);
+        }
+    } else if (typeof marked !== 'undefined') {
+        // 没有 DOMPurify，但有 marked.js
         try {
-            // 配置 marked 选项
             marked.setOptions({
-                breaks: true,  // 支持换行
-                gfm: true,     // 支持 GitHub Flavored Markdown
+                breaks: true,
+                gfm: true,
             });
             formattedContent = marked.parse(content);
         } catch (e) {
             console.error('Markdown 解析失败:', e);
-            // 降级处理：转义 HTML 并保留换行
             formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
         }
     } else {
-        // 如果没有 marked.js，使用简单处理
+        // 都没有，简单转义
         formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
     }
     
@@ -1315,7 +1346,35 @@ function escapeHtml(text) {
 }
 
 function formatMarkdown(text) {
-    if (typeof marked !== 'undefined') {
+    // 配置 DOMPurify 允许的标签和属性
+    const sanitizeConfig = {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr'],
+        ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'class'],
+        ALLOW_DATA_ATTR: false,
+    };
+    
+    if (typeof DOMPurify !== 'undefined') {
+        // 如果内容看起来已经是 HTML（包含 HTML 标签），直接清理
+        // 否则先用 marked.js 解析 Markdown，再清理
+        if (typeof marked !== 'undefined' && !/<[a-z][\s\S]*>/i.test(text)) {
+            // 内容不包含 HTML 标签，可能是 Markdown，使用 marked.js 解析
+            try {
+                marked.setOptions({
+                    breaks: true,
+                    gfm: true,
+                });
+                let parsedContent = marked.parse(text);
+                return DOMPurify.sanitize(parsedContent, sanitizeConfig);
+            } catch (e) {
+                console.error('Markdown 解析失败:', e);
+                return DOMPurify.sanitize(text, sanitizeConfig);
+            }
+        } else {
+            // 内容包含 HTML 标签或 marked.js 不可用，直接清理
+            return DOMPurify.sanitize(text, sanitizeConfig);
+        }
+    } else if (typeof marked !== 'undefined') {
+        // 没有 DOMPurify，但有 marked.js
         try {
             marked.setOptions({
                 breaks: true,
@@ -1629,6 +1688,12 @@ async function cancelActiveTask(conversationId, button) {
 // 设置相关功能
 let currentConfig = null;
 let allTools = [];
+let toolsPagination = {
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 0
+};
 
 // 打开设置
 async function openSettings() {
@@ -1685,19 +1750,95 @@ async function loadConfig() {
         // 填充Agent配置
         document.getElementById('agent-max-iterations').value = currentConfig.agent.max_iterations || 30;
         
-        // 填充工具列表
-        allTools = currentConfig.tools || [];
-        renderToolsList();
+        // 加载工具列表（使用分页）
+        toolsSearchKeyword = '';
+        await loadToolsList(1, '');
     } catch (error) {
         console.error('加载配置失败:', error);
         alert('加载配置失败: ' + error.message);
     }
 }
 
+// 工具搜索关键词
+let toolsSearchKeyword = '';
+
+// 加载工具列表（分页）
+async function loadToolsList(page = 1, searchKeyword = '') {
+    try {
+        const pageSize = toolsPagination.pageSize;
+        let url = `/api/config/tools?page=${page}&page_size=${pageSize}`;
+        if (searchKeyword) {
+            url += `&search=${encodeURIComponent(searchKeyword)}`;
+        }
+        
+        const response = await apiFetch(url);
+        if (!response.ok) {
+            throw new Error('获取工具列表失败');
+        }
+        
+        const result = await response.json();
+        allTools = result.tools || [];
+        toolsPagination = {
+            page: result.page || page,
+            pageSize: result.page_size || pageSize,
+            total: result.total || 0,
+            totalPages: result.total_pages || 1
+        };
+        
+        renderToolsList();
+        renderToolsPagination();
+    } catch (error) {
+        console.error('加载工具列表失败:', error);
+        const toolsList = document.getElementById('tools-list');
+        if (toolsList) {
+            toolsList.innerHTML = `<div class="error">加载工具列表失败: ${escapeHtml(error.message)}</div>`;
+        }
+    }
+}
+
+// 搜索工具
+function searchTools() {
+    const searchInput = document.getElementById('tools-search');
+    const keyword = searchInput ? searchInput.value.trim() : '';
+    toolsSearchKeyword = keyword;
+    // 搜索时重置到第一页
+    loadToolsList(1, keyword);
+}
+
+// 清除搜索
+function clearSearch() {
+    const searchInput = document.getElementById('tools-search');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    toolsSearchKeyword = '';
+    loadToolsList(1, '');
+}
+
+// 处理搜索框回车事件
+function handleSearchKeyPress(event) {
+    if (event.key === 'Enter') {
+        searchTools();
+    }
+}
+
 // 渲染工具列表
 function renderToolsList() {
     const toolsList = document.getElementById('tools-list');
-    toolsList.innerHTML = '';
+    if (!toolsList) return;
+    
+    // 只渲染列表部分，分页控件单独渲染
+    const listContainer = toolsList.querySelector('.tools-list-items') || document.createElement('div');
+    listContainer.className = 'tools-list-items';
+    listContainer.innerHTML = '';
+    
+    if (allTools.length === 0) {
+        listContainer.innerHTML = '<div class="empty">暂无工具</div>';
+        if (!toolsList.contains(listContainer)) {
+            toolsList.appendChild(listContainer);
+        }
+        return;
+    }
     
     allTools.forEach(tool => {
         const toolItem = document.createElement('div');
@@ -1710,8 +1851,51 @@ function renderToolsList() {
                 <div class="tool-item-desc">${escapeHtml(tool.description || '无描述')}</div>
             </div>
         `;
-        toolsList.appendChild(toolItem);
+        listContainer.appendChild(toolItem);
     });
+    
+    if (!toolsList.contains(listContainer)) {
+        toolsList.appendChild(listContainer);
+    }
+}
+
+// 渲染工具列表分页控件
+function renderToolsPagination() {
+    const toolsList = document.getElementById('tools-list');
+    if (!toolsList) return;
+    
+    // 移除旧的分页控件
+    const oldPagination = toolsList.querySelector('.tools-pagination');
+    if (oldPagination) {
+        oldPagination.remove();
+    }
+    
+    // 如果只有一页或没有数据，不显示分页
+    if (toolsPagination.totalPages <= 1) {
+        return;
+    }
+    
+    const pagination = document.createElement('div');
+    pagination.className = 'tools-pagination';
+    
+    const { page, totalPages, total } = toolsPagination;
+    const startItem = (page - 1) * toolsPagination.pageSize + 1;
+    const endItem = Math.min(page * toolsPagination.pageSize, total);
+    
+    pagination.innerHTML = `
+        <div class="pagination-info">
+            显示 ${startItem}-${endItem} / 共 ${total} 个工具${toolsSearchKeyword ? ` (搜索: "${escapeHtml(toolsSearchKeyword)}")` : ''}
+        </div>
+        <div class="pagination-controls">
+            <button class="btn-secondary" onclick="loadToolsList(1, '${escapeHtml(toolsSearchKeyword)}')" ${page === 1 ? 'disabled' : ''}>首页</button>
+            <button class="btn-secondary" onclick="loadToolsList(${page - 1}, '${escapeHtml(toolsSearchKeyword)}')" ${page === 1 ? 'disabled' : ''}>上一页</button>
+            <span class="pagination-page">第 ${page} / ${totalPages} 页</span>
+            <button class="btn-secondary" onclick="loadToolsList(${page + 1}, '${escapeHtml(toolsSearchKeyword)}')" ${page === totalPages ? 'disabled' : ''}>下一页</button>
+            <button class="btn-secondary" onclick="loadToolsList(${totalPages}, '${escapeHtml(toolsSearchKeyword)}')" ${page === totalPages ? 'disabled' : ''}>末页</button>
+        </div>
+    `;
+    
+    toolsList.appendChild(pagination);
 }
 
 // 全选工具
@@ -1728,18 +1912,11 @@ function deselectAllTools() {
     });
 }
 
-// 过滤工具
+// 过滤工具（已废弃，现在使用服务端搜索）
+// 保留此函数以防其他地方调用，但实际功能已由searchTools()替代
 function filterTools() {
-    const searchTerm = document.getElementById('tools-search').value.toLowerCase();
-    document.querySelectorAll('.tool-item').forEach(item => {
-        const toolName = (item.dataset.toolName || '').toLowerCase();
-        const toolDesc = item.querySelector('.tool-item-desc').textContent.toLowerCase();
-        if (toolName.includes(searchTerm) || toolDesc.includes(searchTerm)) {
-            item.classList.remove('hidden');
-        } else {
-            item.classList.add('hidden');
-        }
-    });
+    // 不再使用客户端过滤，改为触发服务端搜索
+    // 可以保留为空函数或移除oninput事件
 }
 
 // 应用设置
@@ -1791,17 +1968,48 @@ async function applySettings() {
         };
         
         // 收集工具启用状态
+        // 由于使用分页，需要先获取所有工具的状态
+        // 先获取当前页的工具状态
+        const currentPageTools = new Map();
         document.querySelectorAll('#tools-list .tool-item').forEach(item => {
             const checkbox = item.querySelector('input[type="checkbox"]');
             const toolName = item.dataset.toolName;
             if (toolName) {
-                // 直接使用工具名称
-                config.tools.push({
-                    name: toolName,
-                    enabled: checkbox.checked
-                });
+                currentPageTools.set(toolName, checkbox.checked);
             }
         });
+        
+        // 获取所有工具列表以获取完整状态
+        try {
+            const allToolsResponse = await apiFetch(`/api/config/tools?page=1&page_size=1000`);
+            if (allToolsResponse.ok) {
+                const allToolsResult = await allToolsResponse.json();
+                // 使用所有工具，但用当前页的修改覆盖
+                allToolsResult.tools.forEach(tool => {
+                    config.tools.push({
+                        name: tool.name,
+                        enabled: currentPageTools.has(tool.name) ? currentPageTools.get(tool.name) : tool.enabled
+                    });
+                });
+            } else {
+                // 如果获取失败，只使用当前页的工具
+                currentPageTools.forEach((enabled, toolName) => {
+                    config.tools.push({
+                        name: toolName,
+                        enabled: enabled
+                    });
+                });
+            }
+        } catch (error) {
+            console.warn('获取所有工具列表失败，仅使用当前页工具状态', error);
+            // 如果获取失败，只使用当前页的工具
+            currentPageTools.forEach((enabled, toolName) => {
+                config.tools.push({
+                    name: toolName,
+                    enabled: enabled
+                });
+            });
+        }
         
         // 更新配置
         const updateResponse = await apiFetch('/api/config', {
@@ -1922,7 +2130,13 @@ async function changePassword() {
 const monitorState = {
     executions: [],
     stats: {},
-    lastFetchedAt: null
+    lastFetchedAt: null,
+    pagination: {
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0
+    }
 };
 
 function openMonitorPanel() {
@@ -1947,7 +2161,15 @@ function openMonitorPanel() {
         statusFilter.value = 'all';
     }
 
-    refreshMonitorPanel();
+    // 重置分页状态
+    monitorState.pagination = {
+        page: 1,
+        pageSize: 20,
+        total: 0,
+        totalPages: 0
+    };
+
+    refreshMonitorPanel(1);
 }
 
 function closeMonitorPanel() {
@@ -1957,12 +2179,16 @@ function closeMonitorPanel() {
     }
 }
 
-async function refreshMonitorPanel() {
+async function refreshMonitorPanel(page = null) {
     const statsContainer = document.getElementById('monitor-stats');
     const execContainer = document.getElementById('monitor-executions');
 
     try {
-        const response = await apiFetch('/api/monitor', { method: 'GET' });
+        // 如果指定了页码，使用指定页码，否则使用当前页码
+        const currentPage = page !== null ? page : monitorState.pagination.page;
+        const pageSize = monitorState.pagination.pageSize;
+        
+        const response = await apiFetch(`/api/monitor?page=${currentPage}&page_size=${pageSize}`, { method: 'GET' });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
             throw new Error(result.error || '获取监控数据失败');
@@ -1971,9 +2197,20 @@ async function refreshMonitorPanel() {
         monitorState.executions = Array.isArray(result.executions) ? result.executions : [];
         monitorState.stats = result.stats || {};
         monitorState.lastFetchedAt = new Date();
+        
+        // 更新分页信息
+        if (result.total !== undefined) {
+            monitorState.pagination = {
+                page: result.page || currentPage,
+                pageSize: result.page_size || pageSize,
+                total: result.total || 0,
+                totalPages: result.total_pages || 1
+            };
+        }
 
         renderMonitorStats(monitorState.stats, monitorState.lastFetchedAt);
         renderMonitorExecutions(monitorState.executions);
+        renderMonitorPagination();
     } catch (error) {
         console.error('刷新监控面板失败:', error);
         if (statsContainer) {
@@ -2084,7 +2321,6 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
     }
 
     const rows = filtered
-        .slice(0, 25)
         .map(exec => {
             const status = (exec.status || 'unknown').toLowerCase();
             const statusClass = `monitor-status-chip ${status}`;
@@ -2109,22 +2345,67 @@ function renderMonitorExecutions(executions = [], statusFilter = 'all') {
         })
         .join('');
 
-    container.innerHTML = `
-        <div class="monitor-table-container">
-            <table class="monitor-table">
-                <thead>
-                    <tr>
-                        <th>工具</th>
-                        <th>状态</th>
-                        <th>开始时间</th>
-                        <th>耗时</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
+    // 创建表格容器
+    const tableContainer = document.createElement('div');
+    tableContainer.className = 'monitor-table-container';
+    tableContainer.innerHTML = `
+        <table class="monitor-table">
+            <thead>
+                <tr>
+                    <th>工具</th>
+                    <th>状态</th>
+                    <th>开始时间</th>
+                    <th>耗时</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+    
+    // 清空容器并添加表格
+    container.innerHTML = '';
+    container.appendChild(tableContainer);
+}
+
+// 渲染监控面板分页控件
+function renderMonitorPagination() {
+    const container = document.getElementById('monitor-executions');
+    if (!container) return;
+    
+    // 移除旧的分页控件
+    const oldPagination = container.querySelector('.monitor-pagination');
+    if (oldPagination) {
+        oldPagination.remove();
+    }
+    
+    const { page, totalPages, total, pageSize } = monitorState.pagination;
+    
+    // 如果只有一页或没有数据，不显示分页
+    if (totalPages <= 1 || total === 0) {
+        return;
+    }
+    
+    const pagination = document.createElement('div');
+    pagination.className = 'monitor-pagination';
+    
+    const startItem = (page - 1) * pageSize + 1;
+    const endItem = Math.min(page * pageSize, total);
+    
+    pagination.innerHTML = `
+        <div class="pagination-info">
+            显示 ${startItem}-${endItem} / 共 ${total} 条记录
+        </div>
+        <div class="pagination-controls">
+            <button class="btn-secondary" onclick="refreshMonitorPanel(1)" ${page === 1 ? 'disabled' : ''}>首页</button>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(${page - 1})" ${page === 1 ? 'disabled' : ''}>上一页</button>
+            <span class="pagination-page">第 ${page} / ${totalPages} 页</span>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(${page + 1})" ${page === totalPages ? 'disabled' : ''}>下一页</button>
+            <button class="btn-secondary" onclick="refreshMonitorPanel(${totalPages})" ${page === totalPages ? 'disabled' : ''}>末页</button>
         </div>
     `;
+    
+    container.appendChild(pagination);
 }
 
 

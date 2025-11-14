@@ -69,6 +69,17 @@ func (db *DB) SaveToolExecution(exec *mcp.ToolExecution) error {
 	return nil
 }
 
+// CountToolExecutions 统计工具执行记录总数
+func (db *DB) CountToolExecutions() (int, error) {
+	query := `SELECT COUNT(*) FROM tool_executions`
+	var count int
+	err := db.QueryRow(query).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // LoadToolExecutions 加载所有工具执行记录（支持分页）
 func (db *DB) LoadToolExecutions() ([]*mcp.ToolExecution, error) {
 	return db.LoadToolExecutionsWithPagination(0, 1000)

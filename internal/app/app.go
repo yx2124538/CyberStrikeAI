@@ -191,6 +191,7 @@ func setupRoutes(
 
 		// 配置管理
 		protected.GET("/config", configHandler.GetConfig)
+		protected.GET("/config/tools", configHandler.GetTools)
 		protected.PUT("/config", configHandler.UpdateConfig)
 		protected.POST("/config/apply", configHandler.ApplyConfig)
 

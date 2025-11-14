@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	"cyberstrike-ai/internal/config"
@@ -88,6 +90,99 @@ func (h *ConfigHandler) GetConfig(c *gin.Context) {
 		MCP:    h.config.MCP,
 		Tools:  tools,
 		Agent:  h.config.Agent,
+	})
+}
+
+// GetToolsResponse 获取工具列表响应（分页）
+type GetToolsResponse struct {
+	Tools      []ToolConfigInfo `json:"tools"`
+	Total      int              `json:"total"`
+	Page       int              `json:"page"`
+	PageSize   int              `json:"page_size"`
+	TotalPages int              `json:"total_pages"`
+}
+
+// GetTools 获取工具列表（支持分页和搜索）
+func (h *ConfigHandler) GetTools(c *gin.Context) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// 解析分页参数
+	page := 1
+	pageSize := 20
+	if pageStr := c.Query("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if pageSizeStr := c.Query("page_size"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
+			pageSize = ps
+		}
+	}
+
+	// 解析搜索参数
+	searchTerm := c.Query("search")
+	searchTermLower := ""
+	if searchTerm != "" {
+		searchTermLower = strings.ToLower(searchTerm)
+	}
+
+	// 获取所有工具并应用搜索过滤
+	allTools := make([]ToolConfigInfo, 0, len(h.config.Security.Tools))
+	for _, tool := range h.config.Security.Tools {
+		toolInfo := ToolConfigInfo{
+			Name:        tool.Name,
+			Description: tool.ShortDescription,
+			Enabled:     tool.Enabled,
+		}
+		// 如果没有简短描述，使用详细描述的前100个字符
+		if toolInfo.Description == "" {
+			desc := tool.Description
+			if len(desc) > 100 {
+				desc = desc[:100] + "..."
+			}
+			toolInfo.Description = desc
+		}
+
+		// 如果有关键词，进行搜索过滤
+		if searchTermLower != "" {
+			nameLower := strings.ToLower(toolInfo.Name)
+			descLower := strings.ToLower(toolInfo.Description)
+			if !strings.Contains(nameLower, searchTermLower) && !strings.Contains(descLower, searchTermLower) {
+				continue // 不匹配，跳过
+			}
+		}
+
+		allTools = append(allTools, toolInfo)
+	}
+
+	total := len(allTools)
+	totalPages := (total + pageSize - 1) / pageSize
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	// 计算分页范围
+	offset := (page - 1) * pageSize
+	end := offset + pageSize
+	if end > total {
+		end = total
+	}
+
+	var tools []ToolConfigInfo
+	if offset < total {
+		tools = allTools[offset:end]
+	} else {
+		tools = []ToolConfigInfo{}
+	}
+
+	c.JSON(http.StatusOK, GetToolsResponse{
+		Tools:      tools,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: totalPages,
 	})
 }
 

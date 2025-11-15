@@ -1527,6 +1527,7 @@ header {
     align-items: center;
     flex-wrap: nowrap;
     width: 100%;
+    overflow: visible;
 }
 
 .tools-actions button {
@@ -1538,6 +1539,8 @@ header {
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .tools-actions button:hover {
@@ -1559,9 +1562,47 @@ header {
     display: flex;
     gap: 4px;
     flex: 1;
-    min-width: 0;
-    max-width: 300px;
+    min-width: 150px;
     align-items: center;
+}
+
+.page-size-selector {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-right: 8px;
+}
+
+.page-size-selector label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    margin-right: 4px;
+}
+
+.page-size-selector select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.8125rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 70px;
+    height: 32px;
+}
+
+.page-size-selector select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.1);
+}
+
+.page-size-selector select:hover {
+    border-color: var(--accent-color);
 }
 
 .search-box input {
@@ -1688,6 +1729,8 @@ header {
     border-top: 1px solid var(--border-color);
     margin-top: 8px;
     background: var(--bg-primary);
+    gap: 16px;
+    flex-wrap: wrap;
 }
 
 .pagination-info {
@@ -1716,6 +1759,41 @@ header {
     font-size: 0.875rem;
     color: var(--text-secondary);
     padding: 0 8px;
+}
+
+.pagination-page-size {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.pagination-page-size label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.pagination-page-size select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 70px;
+}
+
+.pagination-page-size select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.1);
+}
+
+.pagination-page-size select:hover {
+    border-color: var(--accent-color);
 }
 
 .modal-footer {
@@ -2078,25 +2156,26 @@ header {
 .tools-stats {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 12px;
     margin-left: auto;
-    padding: 8px 16px;
+    padding: 6px 12px;
     background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
     border: 1px solid var(--border-color);
     border-radius: 10px;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     color: var(--text-secondary);
     box-shadow: var(--shadow-sm);
     flex-wrap: nowrap;
-    flex-shrink: 0;
+    flex-shrink: 1;
     white-space: nowrap;
+    min-width: 0;
 }
 
 .tools-stats span {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 0;
+    gap: 6px;
+    padding: 2px 0;
     white-space: nowrap;
     flex-shrink: 0;
 }
@@ -2110,9 +2189,9 @@ header {
 .tools-stats span:not(:last-child)::after {
     content: '';
     width: 1px;
-    height: 20px;
+    height: 16px;
     background: var(--border-color);
-    margin-left: 10px;
+    margin-left: 8px;
     display: inline-block;
 }
 
@@ -2392,6 +2471,49 @@ header {
 
 /* 响应式优化 */
 @media (max-width: 768px) {
+    .tools-actions {
+        gap: 6px;
+    }
+    
+    .tools-actions button {
+        padding: 6px 12px;
+        font-size: 0.8125rem;
+    }
+    
+    .search-box {
+        min-width: 100px;
+    }
+    
+    .search-box input {
+        font-size: 0.8125rem;
+        padding: 6px 10px;
+    }
+    
+    .btn-search {
+        padding: 6px 12px;
+        min-width: 36px;
+    }
+    
+    .page-size-selector {
+        font-size: 0.75rem;
+    }
+    
+    .page-size-selector select {
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        min-width: 50px;
+    }
+    
+    .tools-stats {
+        padding: 4px 8px;
+        font-size: 0.7rem;
+        gap: 8px;
+    }
+    
+    .tools-stats span {
+        gap: 4px;
+    }
+    
     .external-mcp-actions {
         flex-direction: column;
         align-items: stretch;

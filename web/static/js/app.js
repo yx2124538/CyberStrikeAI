@@ -1688,9 +1688,15 @@ async function cancelActiveTask(conversationId, button) {
 // 设置相关功能
 let currentConfig = null;
 let allTools = [];
+// 从localStorage读取每页显示数量，默认为20
+const getToolsPageSize = () => {
+    const saved = localStorage.getItem('toolsPageSize');
+    return saved ? parseInt(saved, 10) : 20;
+};
+
 let toolsPagination = {
     page: 1,
-    pageSize: 20,
+    pageSize: getToolsPageSize(),
     total: 0,
     totalPages: 0
 };
@@ -1749,6 +1755,10 @@ async function loadConfig() {
         
         // 填充Agent配置
         document.getElementById('agent-max-iterations').value = currentConfig.agent.max_iterations || 30;
+        
+        // 设置每页显示数量（会在分页控件渲染时设置）
+        const savedPageSize = getToolsPageSize();
+        toolsPagination.pageSize = savedPageSize;
         
         // 加载工具列表（使用分页）
         toolsSearchKeyword = '';
@@ -1896,9 +1906,19 @@ function renderToolsPagination() {
     const startItem = (page - 1) * toolsPagination.pageSize + 1;
     const endItem = Math.min(page * toolsPagination.pageSize, total);
     
+    const savedPageSize = getToolsPageSize();
     pagination.innerHTML = `
         <div class="pagination-info">
             显示 ${startItem}-${endItem} / 共 ${total} 个工具${toolsSearchKeyword ? ` (搜索: "${escapeHtml(toolsSearchKeyword)}")` : ''}
+        </div>
+        <div class="pagination-page-size">
+            <label for="tools-page-size-pagination">每页:</label>
+            <select id="tools-page-size-pagination" onchange="changeToolsPageSize()">
+                <option value="10" ${savedPageSize === 10 ? 'selected' : ''}>10</option>
+                <option value="20" ${savedPageSize === 20 ? 'selected' : ''}>20</option>
+                <option value="50" ${savedPageSize === 50 ? 'selected' : ''}>50</option>
+                <option value="100" ${savedPageSize === 100 ? 'selected' : ''}>100</option>
+            </select>
         </div>
         <div class="pagination-controls">
             <button class="btn-secondary" onclick="loadToolsList(1, '${escapeHtml(toolsSearchKeyword)}')" ${page === 1 ? 'disabled' : ''}>首页</button>
@@ -1926,6 +1946,33 @@ function deselectAllTools() {
         checkbox.checked = false;
     });
     updateToolsStats();
+}
+
+// 改变每页显示数量
+async function changeToolsPageSize() {
+    // 尝试从两个位置获取选择器（顶部或分页区域）
+    const pageSizeSelect = document.getElementById('tools-page-size') || document.getElementById('tools-page-size-pagination');
+    if (!pageSizeSelect) return;
+    
+    const newPageSize = parseInt(pageSizeSelect.value, 10);
+    if (isNaN(newPageSize) || newPageSize < 1) {
+        return;
+    }
+    
+    // 保存到localStorage
+    localStorage.setItem('toolsPageSize', newPageSize.toString());
+    
+    // 更新分页配置
+    toolsPagination.pageSize = newPageSize;
+    
+    // 同步更新另一个选择器（如果存在）
+    const otherSelect = document.getElementById('tools-page-size') || document.getElementById('tools-page-size-pagination');
+    if (otherSelect && otherSelect !== pageSizeSelect) {
+        otherSelect.value = newPageSize;
+    }
+    
+    // 重新加载第一页
+    await loadToolsList(1, toolsSearchKeyword);
 }
 
 // 更新工具统计信息

@@ -48,4 +48,3 @@ security:
   # 推荐方式：在 tools/ 目录下为每个工具创建独立的配置文件
 # 外部MCP配置
 external_mcp:
- 

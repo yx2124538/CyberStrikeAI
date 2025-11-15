@@ -465,24 +465,26 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 			// 在循环外部统一更新，避免重复调用
 			h.externalMCPMgr.LoadConfigs(&h.config.ExternalMCP)
 			
-			// 处理MCP连接状态
+			// 处理MCP连接状态（异步启动，避免阻塞）
 			for mcpName := range externalMCPToolMap {
 				cfg := h.config.ExternalMCP.Servers[mcpName]
 				// 如果MCP需要启用，确保客户端已启动
 				if cfg.ExternalMCPEnable {
-					// 启动外部MCP（如果未启动）
+					// 启动外部MCP（如果未启动）- 异步执行，避免阻塞
 					client, exists := h.externalMCPMgr.GetClient(mcpName)
 					if !exists || !client.IsConnected() {
-						if err := h.externalMCPMgr.StartClient(mcpName); err != nil {
-							h.logger.Warn("启动外部MCP失败",
-								zap.String("mcp", mcpName),
-								zap.Error(err),
-							)
-						} else {
-							h.logger.Info("启动外部MCP",
-								zap.String("mcp", mcpName),
-							)
-						}
+						go func(name string) {
+							if err := h.externalMCPMgr.StartClient(name); err != nil {
+								h.logger.Warn("启动外部MCP失败",
+									zap.String("mcp", name),
+									zap.Error(err),
+								)
+							} else {
+								h.logger.Info("启动外部MCP",
+									zap.String("mcp", name),
+								)
+							}
+						}(mcpName)
 					}
 				}
 			}

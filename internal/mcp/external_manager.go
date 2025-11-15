@@ -22,6 +22,7 @@ type ExternalMCPManager struct {
 	storage    MonitorStorage            // 可选的持久化存储
 	executions map[string]*ToolExecution // 执行记录
 	stats      map[string]*ToolStats     // 工具统计信息
+	errors     map[string]string         // 错误信息
 	mu         sync.RWMutex
 }
 
@@ -39,6 +40,7 @@ func NewExternalMCPManagerWithStorage(logger *zap.Logger, storage MonitorStorage
 		storage:    storage,
 		executions: make(map[string]*ToolExecution),
 		stats:      make(map[string]*ToolStats),
+		errors:     make(map[string]string),
 	}
 }
 
@@ -117,12 +119,12 @@ func (m *ExternalMCPManager) StartClient(name string) error {
 
 	// 检查是否已经有连接的客户端
 	m.mu.RLock()
-	_, hasClient := m.clients[name]
+	existingClient, hasClient := m.clients[name]
 	m.mu.RUnlock()
 
 	if hasClient {
 		// 检查客户端是否已连接
-		if client, ok := m.GetClient(name); ok && client.IsConnected() {
+		if existingClient.IsConnected() {
 			// 客户端已连接，直接返回成功（目标状态已达成）
 			// 更新配置为启用（确保配置一致）
 			m.mu.Lock()
@@ -132,22 +134,55 @@ func (m *ExternalMCPManager) StartClient(name string) error {
 			return nil
 		}
 		// 如果有客户端但未连接，先关闭
-		if client, ok := m.GetClient(name); ok {
-			client.Close()
-			m.mu.Lock()
-			delete(m.clients, name)
-			m.mu.Unlock()
-		}
+		existingClient.Close()
+		m.mu.Lock()
+		delete(m.clients, name)
+		m.mu.Unlock()
 	}
 
 	// 更新配置为启用
 	m.mu.Lock()
 	serverCfg.ExternalMCPEnable = true
 	m.configs[name] = serverCfg
+	// 清除之前的错误信息（重新启动时）
+	delete(m.errors, name)
 	m.mu.Unlock()
 
-	// 连接客户端
-	return m.connectClient(name, serverCfg)
+	// 立即创建客户端并设置为"connecting"状态，这样前端可以立即看到状态
+	client := m.createClient(serverCfg)
+	if client == nil {
+		return fmt.Errorf("无法创建客户端：不支持的传输模式")
+	}
+
+	// 设置状态为connecting
+	m.setClientStatus(client, "connecting")
+
+	// 立即保存客户端，这样前端查询时就能看到"connecting"状态
+	m.mu.Lock()
+	m.clients[name] = client
+	m.mu.Unlock()
+
+	// 在后台异步进行实际连接
+	go func() {
+		if err := m.doConnect(name, serverCfg, client); err != nil {
+			m.logger.Error("连接外部MCP客户端失败",
+				zap.String("name", name),
+				zap.Error(err),
+			)
+			// 连接失败，设置状态为error并保存错误信息
+			m.setClientStatus(client, "error")
+			m.mu.Lock()
+			m.errors[name] = err.Error()
+			m.mu.Unlock()
+		} else {
+			// 连接成功，清除错误信息
+			m.mu.Lock()
+			delete(m.errors, name)
+			m.mu.Unlock()
+		}
+	}()
+
+	return nil
 }
 
 // StopClient 停止客户端
@@ -166,6 +201,9 @@ func (m *ExternalMCPManager) StopClient(name string) error {
 		delete(m.clients, name)
 	}
 
+	// 清除错误信息
+	delete(m.errors, name)
+
 	// 更新配置为禁用
 	serverCfg.ExternalMCPEnable = false
 	m.configs[name] = serverCfg
@@ -180,6 +218,14 @@ func (m *ExternalMCPManager) GetClient(name string) (ExternalMCPClient, bool) {
 
 	client, exists := m.clients[name]
 	return client, exists
+}
+
+// GetError 获取错误信息
+func (m *ExternalMCPManager) GetError(name string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.errors[name]
 }
 
 // GetAllTools 获取所有外部MCP的工具
@@ -543,10 +589,8 @@ func (m *ExternalMCPManager) GetToolCounts() map[string]int {
 	return result
 }
 
-// connectClient 连接客户端（异步）
-func (m *ExternalMCPManager) connectClient(name string, serverCfg config.ExternalMCPServerConfig) error {
-	var client ExternalMCPClient
-
+// createClient 创建客户端（不连接）
+func (m *ExternalMCPManager) createClient(serverCfg config.ExternalMCPServerConfig) ExternalMCPClient {
 	timeout := time.Duration(serverCfg.Timeout) * time.Second
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -561,26 +605,74 @@ func (m *ExternalMCPManager) connectClient(name string, serverCfg config.Externa
 		} else if serverCfg.URL != "" {
 			transport = "http"
 		} else {
-			return fmt.Errorf("无法确定传输模式: 需要指定command或url")
+			return nil
 		}
 	}
 
 	switch transport {
 	case "http":
 		if serverCfg.URL == "" {
-			return fmt.Errorf("HTTP模式需要URL")
+			return nil
 		}
-		client = NewHTTPMCPClient(serverCfg.URL, timeout, m.logger)
+		return NewHTTPMCPClient(serverCfg.URL, timeout, m.logger)
 	case "stdio":
 		if serverCfg.Command == "" {
-			return fmt.Errorf("stdio模式需要command")
+			return nil
 		}
-		client = NewStdioMCPClient(serverCfg.Command, serverCfg.Args, timeout, m.logger)
+		return NewStdioMCPClient(serverCfg.Command, serverCfg.Args, timeout, m.logger)
 	default:
-		return fmt.Errorf("不支持的传输模式: %s", transport)
+		return nil
+	}
+}
+
+// doConnect 执行实际连接
+func (m *ExternalMCPManager) doConnect(name string, serverCfg config.ExternalMCPServerConfig, client ExternalMCPClient) error {
+	timeout := time.Duration(serverCfg.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
 	}
 
 	// 初始化连接
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := client.Initialize(ctx); err != nil {
+		return err
+	}
+
+	m.logger.Info("外部MCP客户端已连接",
+		zap.String("name", name),
+	)
+
+	return nil
+}
+
+// setClientStatus 设置客户端状态（通过类型断言）
+func (m *ExternalMCPManager) setClientStatus(client ExternalMCPClient, status string) {
+	switch c := client.(type) {
+	case *HTTPMCPClient:
+		c.setStatus(status)
+	case *StdioMCPClient:
+		c.setStatus(status)
+	}
+}
+
+// connectClient 连接客户端（异步）- 保留用于向后兼容
+func (m *ExternalMCPManager) connectClient(name string, serverCfg config.ExternalMCPServerConfig) error {
+	client := m.createClient(serverCfg)
+	if client == nil {
+		return fmt.Errorf("无法创建客户端：不支持的传输模式")
+	}
+
+	// 设置状态为connecting
+	m.setClientStatus(client, "connecting")
+
+	// 初始化连接
+	timeout := time.Duration(serverCfg.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -599,7 +691,6 @@ func (m *ExternalMCPManager) connectClient(name string, serverCfg config.Externa
 
 	m.logger.Info("外部MCP客户端已连接",
 		zap.String("name", name),
-		zap.String("transport", transport),
 	)
 
 	return nil

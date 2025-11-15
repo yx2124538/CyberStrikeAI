@@ -56,11 +56,16 @@ func (h *ExternalMCPHandler) GetExternalMCPs(c *gin.Context) {
 		}
 		
 		toolCount := toolCounts[name]
+		errorMsg := ""
+		if status == "error" {
+			errorMsg = h.manager.GetError(name)
+		}
 		
 		result[name] = ExternalMCPResponse{
 			Config:    cfg,
 			Status:    status,
 			ToolCount: toolCount,
+			Error:     errorMsg,
 		}
 	}
 	
@@ -102,10 +107,17 @@ func (h *ExternalMCPHandler) GetExternalMCP(c *gin.Context) {
 		}
 	}
 	
+	// 获取错误信息
+	errorMsg := ""
+	if status == "error" {
+		errorMsg = h.manager.GetError(name)
+	}
+	
 	c.JSON(http.StatusOK, ExternalMCPResponse{
 		Config:    cfg,
 		Status:    status,
 		ToolCount: toolCount,
+		Error:     errorMsg,
 	})
 }
 
@@ -238,7 +250,7 @@ func (h *ExternalMCPHandler) StartExternalMCP(c *gin.Context) {
 		return
 	}
 	
-	// 启动客户端（这可能会花费一些时间）
+	// 启动客户端（立即创建客户端并设置状态为connecting，实际连接在后台进行）
 	h.logger.Info("开始启动外部MCP", zap.String("name", name))
 	if err := h.manager.StartClient(name); err != nil {
 		h.logger.Error("启动外部MCP失败", zap.String("name", name), zap.Error(err))
@@ -249,16 +261,17 @@ func (h *ExternalMCPHandler) StartExternalMCP(c *gin.Context) {
 		return
 	}
 	
-	// 获取连接状态
+	// 获取客户端状态（应该是connecting）
 	client, exists := h.manager.GetClient(name)
-	status := "disconnected"
+	status := "connecting"
 	if exists {
 		status = client.GetStatus()
 	}
 	
-	h.logger.Info("外部MCP启动完成", zap.String("name", name), zap.String("status", status))
+	// 立即返回，不等待连接完成
+	// 客户端会在后台异步连接，用户可以通过状态查询接口查看连接状态
 	c.JSON(http.StatusOK, gin.H{
-		"message": "外部MCP启动完成",
+		"message": "外部MCP启动请求已提交，正在后台连接中",
 		"status":  status,
 	})
 }
@@ -504,7 +517,8 @@ type AddOrUpdateExternalMCPRequest struct {
 // ExternalMCPResponse 外部MCP响应
 type ExternalMCPResponse struct {
 	Config    config.ExternalMCPServerConfig `json:"config"`
-	Status    string                         `json:"status"` // "connected", "disconnected", "disabled", "error"
+	Status    string                         `json:"status"` // "connected", "disconnected", "disabled", "error", "connecting"
 	ToolCount int                            `json:"tool_count"` // 工具数量
+	Error     string                         `json:"error,omitempty"` // 错误信息（仅在status为error时存在）
 }
 

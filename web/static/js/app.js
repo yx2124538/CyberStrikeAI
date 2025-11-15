@@ -2652,9 +2652,11 @@ function renderExternalMCPList(servers) {
         const status = server.status || 'disconnected';
         const statusClass = status === 'connected' ? 'status-connected' : 
                            status === 'connecting' ? 'status-connecting' :
+                           status === 'error' ? 'status-error' :
                            status === 'disabled' ? 'status-disabled' : 'status-disconnected';
         const statusText = status === 'connected' ? '已连接' : 
                           status === 'connecting' ? '连接中...' :
+                          status === 'error' ? '连接失败' :
                           status === 'disabled' ? '已禁用' : '未连接';
         const transport = server.config.transport || (server.config.command ? 'stdio' : 'http');
         const transportIcon = transport === 'stdio' ? '⚙️' : '🌐';
@@ -2667,7 +2669,7 @@ function renderExternalMCPList(servers) {
                         <span class="external-mcp-status ${statusClass}">${statusText}</span>
                     </div>
                     <div class="external-mcp-item-actions">
-                        ${status === 'connected' || status === 'disconnected' ? 
+                        ${status === 'connected' || status === 'disconnected' || status === 'error' ? 
                             `<button class="btn-small" id="btn-toggle-${escapeHtml(name)}" onclick="toggleExternalMCP('${escapeHtml(name)}', '${status}')" title="${status === 'connected' ? '停止连接' : '启动连接'}">
                                 ${status === 'connected' ? '⏸ 停止' : '▶ 启动'}
                             </button>` : 
@@ -2679,6 +2681,10 @@ function renderExternalMCPList(servers) {
                         <button class="btn-small btn-danger" onclick="deleteExternalMCP('${escapeHtml(name)}')" title="删除配置" ${status === 'connecting' ? 'disabled' : ''}>🗑 删除</button>
                     </div>
                 </div>
+                ${status === 'error' && server.error ? `
+                <div class="external-mcp-error" style="margin: 12px 0; padding: 12px; background: #fee; border-left: 3px solid #f44; border-radius: 4px; color: #c33; font-size: 0.875rem;">
+                    <strong>❌ 连接错误：</strong>${escapeHtml(server.error)}
+                </div>` : ''}
                 <div class="external-mcp-item-details">
                     <div>
                         <strong>传输模式</strong>

@@ -5,7 +5,7 @@
   ![详情预览](./img/效果.png)
 - mcp-stdio / mcp-http 模式
   ![详情预览](./img/mcp-stdio2.png)
-- 外部MCP接入（兼容mcp-stdio / mcp-http）
+- 外部MCP服务器集成（支持 stdio 和 HTTP 传输模式）
   ![详情预览](./img/外部MCP接入.png)
   
 ## 更新日志

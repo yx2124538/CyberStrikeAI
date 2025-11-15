@@ -8,6 +8,8 @@
   ![Preview](./img/效果.png)
 - MCP Stdio Mode
   ![Preview](./img/mcp-stdio2.png)
+- External MCP Server Integration (supports stdio and HTTP transport modes)
+  ![Preview](./img/外部MCP接入.png)
 
 ## Changelog
 - 2025.11.15 Added external MCP integration feature: support for integrating external MCP servers to extend tool capabilities, supports both stdio and HTTP transport modes, tool-level enable/disable control, complete configuration guide and management APIs

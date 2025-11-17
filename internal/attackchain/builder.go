@@ -265,6 +265,7 @@ func (b *Builder) buildChainGenerationPrompt(contextData *ContextData) (string, 
 ## 核心原则
 
 **目标：让不懂渗透测试的同学可以通过这个攻击链路学习到知识，而不是无数个节点看花眼。**
+**即便某些工具执行或漏洞挖掘没有成功，只要它们提供了关键线索、错误提示或下一步思路，也要被保留下来。**
 
 ## 任务要求
 
@@ -275,20 +276,18 @@ func (b *Builder) buildChainGenerationPrompt(contextData *ContextData) (string, 
      - 不同目标的action节点之间**不应该**建立关联关系
    - **action（行动）**：**工具执行 + AI分析结果 = 一个action节点**
      - 将每个工具执行和AI对该工具结果的分析合并为一个action节点
-     - 节点标签应该清晰描述"做了什么"和"发现了什么"（例如："使用Nmap扫描端口，发现22、80、443端口开放"）
-     - 只包含**有效的、成功的**工具执行（忽略错误、失败、无效的执行）
+     - 节点标签应该清晰描述"做了什么"、"得到了什么结果或线索"（例如："使用Nmap扫描端口，发现22、80、443端口开放" 或 "尝试SQLmap，虽然失败但提示存在WAF拦截"）
+     - 默认关注成功的执行；但如果执行失败却提供了有价值的线索（错误信息、资产指纹、下一步建议等），也要保留，记为"带线索的失败"行动
      - **重要：action节点必须关联到正确的target节点（通过工具执行参数判断目标）**
-   - **vulnerability（漏洞）**：从工具执行结果和AI分析中提取的**真实漏洞**（不是所有发现都是漏洞）
+   - **vulnerability（漏洞）**：从工具执行结果和AI分析中提取的**真实漏洞**（不是所有发现都是漏洞）。若验证失败但能明确表明某个漏洞利用方向不可行，可作为行动节点的线索描述，而不是漏洞节点。
 
 2. **过滤规则（重要！）**：
-   - **忽略所有错误/失败的节点**：
-     - 工具执行错误（Error字段不为空，或Result.IsError为true）
-     - 工具执行结果为空或无效
-     - AI分析中明确标记为"失败"、"错误"、"无效"的内容
-   - **只保留有价值的节点**：
-     - 成功执行的工具
-     - 有实际发现的工具执行
-     - 真实存在的漏洞
+   - **默认忽略**彻底无效的信息：完全没有输出、没有任何线索的失败执行仍需过滤
+   - **必须保留**下列失败执行：
+     - 错误信息里包含了潜在线索、受限条件、可复现的报错
+     - 虽未找到漏洞，但收集到了资产信息、技术栈或后续测试方向
+     - 用户特别关注的失败尝试
+   - **保留策略**：只要行动节点能给后续测试提供启发，就保留；否则忽略
 
 3. **建立清晰的关联关系**：
    - target → action：目标指向属于它的所有行动（通过工具执行参数判断目标）
@@ -303,8 +302,10 @@ func (b *Builder) buildChainGenerationPrompt(contextData *ContextData) (string, 
    - action节点需要：
      - tool_name: 工具名称
      - tool_intent: 工具调用意图（如"端口扫描"、"漏洞扫描"）
-     - ai_analysis: AI对工具结果的分析总结（简洁，不超过100字）
+     - ai_analysis: AI对工具结果的分析总结（简洁，不超过100字，失败节点需解释线索价值）
      - findings: 关键发现（列表）
+     - status: "success" | "failed_insight"（失败但有价值的线索）
+     - hints: ["下一步建议1", "限制条件2"]（失败节点可提供的线索列表）
    - vulnerability节点需要：type, description, severity, location
 
 ## 对话数据
@@ -356,13 +357,18 @@ func (b *Builder) buildChainGenerationPrompt(contextData *ContextData) (string, 
 	for i, exec := range contextData.Executions {
 		// 检查是否是错误/失败的执行
 		isError := exec.Error != "" || (exec.Result != nil && exec.Result.IsError)
+
+		statusText := "成功"
 		if isError {
-			promptBuilder.WriteString(fmt.Sprintf("执行%d [%s] (ID: %s) - **已忽略（执行失败/错误）**\n\n", i+1, exec.ToolName, exec.ID))
-			continue
+			statusText = "失败（可能包含线索）"
 		}
 
-		promptBuilder.WriteString(fmt.Sprintf("执行%d [%s] (ID: %s):\n", i+1, exec.ToolName, exec.ID))
+		promptBuilder.WriteString(fmt.Sprintf("执行%d [%s] (ID: %s) - 状态: %s\n", i+1, exec.ToolName, exec.ID, statusText))
 		promptBuilder.WriteString(fmt.Sprintf("参数: %s\n", b.formatArguments(exec.Arguments)))
+
+		if isError && exec.Error != "" {
+			promptBuilder.WriteString(fmt.Sprintf("错误信息: %s\n", exec.Error))
+		}
 
 		// 检查是否已总结
 		var resultText string
@@ -375,18 +381,22 @@ func (b *Builder) buildChainGenerationPrompt(contextData *ContextData) (string, 
 		}
 
 		// 检查结果是否为空或无效
-		if resultText == "" || strings.TrimSpace(resultText) == "" {
-			promptBuilder.WriteString("结果: **已忽略（结果为空）**\n\n")
-			continue
-		}
-
-		if summary, ok := contextData.SummarizedItems[exec.ID]; ok {
-			promptBuilder.WriteString(fmt.Sprintf("工具执行结果: [已总结] %s\n", summary))
-		} else {
-			if len(resultText) > 5000 {
-				resultText = resultText[:5000] + "..."
+		if strings.TrimSpace(resultText) == "" {
+			if isError {
+				promptBuilder.WriteString("工具执行结果: [失败但未返回正文]\n")
+			} else {
+				promptBuilder.WriteString("工具执行结果: **已忽略（结果为空）**\n\n")
+				continue
 			}
-			promptBuilder.WriteString(fmt.Sprintf("工具执行结果: %s\n", resultText))
+		} else {
+			if summary, ok := contextData.SummarizedItems[exec.ID]; ok {
+				promptBuilder.WriteString(fmt.Sprintf("工具执行结果: [已总结] %s\n", summary))
+			} else {
+				if len(resultText) > 5000 {
+					resultText = resultText[:5000] + "..."
+				}
+				promptBuilder.WriteString(fmt.Sprintf("工具执行结果: %s\n", resultText))
+			}
 		}
 
 		// 添加对应的AI分析（工具执行后AI的回复）
@@ -442,13 +452,14 @@ func (b *Builder) buildChainGenerationPrompt(contextData *ContextData) (string, 
 
 1. **节点合并**：
    - 每个工具执行和对应的AI分析必须合并为一个action节点
-   - action节点的label要清晰描述"做了什么"和"发现了什么"
-   - 例如："使用Nmap扫描192.168.1.1，发现22、80、443端口开放"
+   - action节点的label要清晰描述"做了什么"、"结果/线索是什么"
+   - 例如："使用Nmap扫描192.168.1.1，发现22、80、443端口开放" 或 "执行Sqlmap被WAF拦截，提示403并暴露防护厂商"
+   - 若为失败但有线索的行动，请在metadata.status中标记为"failed_insight"，并在findings/hints里写清线索价值
 
 2. **过滤无效节点**：
-   - **必须忽略**所有错误/失败的执行（已在上面标记为"已忽略"的）
-   - **必须忽略**结果为空或无效的执行
-   - 只保留有价值的、成功的节点
+   - **必须忽略**没有任何输出、没有线索的失败执行
+   - **必须保留**失败但提供关键线索的执行，确保metadata里解释清楚
+   - 只保留对学习或溯源有帮助的节点
 
 3. **简化结构**：
    - 只创建target、action、vulnerability三种节点
@@ -997,23 +1008,31 @@ func (b *Builder) shouldFilterNode(n struct {
 
 		// 检查工具执行是否错误或失败
 		if exec.Error != "" || (exec.Result != nil && exec.Result.IsError) {
-			return true
+			if !hasInsightfulFailure(n.Metadata) {
+				return true
+			}
 		}
 
 		// 检查工具执行结果是否为空
 		if exec.Result == nil || len(exec.Result.Content) == 0 {
-			return true
+			if !hasInsightfulFailure(n.Metadata) {
+				return true
+			}
 		}
 
 		// 检查结果文本是否为空
 		var resultText string
-		for _, content := range exec.Result.Content {
-			if content.Type == "text" {
-				resultText += content.Text
+		if exec.Result != nil {
+			for _, content := range exec.Result.Content {
+				if content.Type == "text" {
+					resultText += content.Text
+				}
 			}
 		}
 		if strings.TrimSpace(resultText) == "" {
-			return true
+			if !hasInsightfulFailure(n.Metadata) {
+				return true
+			}
 		}
 	}
 
@@ -1032,6 +1051,33 @@ func (b *Builder) shouldFilterNode(n struct {
 				return true
 			}
 		}
+	}
+
+	return false
+}
+
+func hasInsightfulFailure(metadata map[string]interface{}) bool {
+	if metadata == nil {
+		return false
+	}
+
+	if status, ok := metadata["status"].(string); ok {
+		normalized := strings.ToLower(strings.TrimSpace(status))
+		if normalized == "failed_insight" || normalized == "failed_clue" || normalized == "failed_with_hint" {
+			return true
+		}
+	}
+
+	if hint, ok := metadata["hint"].(string); ok && strings.TrimSpace(hint) != "" {
+		return true
+	}
+
+	if hints, ok := metadata["hints"].([]interface{}); ok && len(hints) > 0 {
+		return true
+	}
+
+	if insight, ok := metadata["insight"].(string); ok && strings.TrimSpace(insight) != "" {
+		return true
 	}
 
 	return false

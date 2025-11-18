@@ -3571,13 +3571,13 @@ async function loadAttackChain(conversationId) {
                 const container = document.getElementById('attack-chain-container');
                 if (container) {
                     container.innerHTML = `
-                        <div class="loading-spinner" style="text-align: center; padding: 40px;">
-                            <div style="margin-bottom: 16px;">⏳ 攻击链正在生成中...</div>
-                            <div style="color: var(--text-secondary); font-size: 0.875rem;">
-                                请稍候，生成完成后将自动显示
+                        <div style="text-align: center; padding: 28px 24px; color: var(--text-secondary);">
+                            <div style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; color: var(--text-primary);">
+                                <span role="presentation" aria-hidden="true">⏳</span>
+                                <span>攻击链生成中，请稍候</span>
                             </div>
-                            <button class="btn-secondary" onclick="refreshAttackChain()" style="margin-top: 16px;">
-                                刷新查看进度
+                            <button class="btn-secondary" onclick="refreshAttackChain()" style="margin-top: 12px; font-size: 0.78rem; padding: 4px 12px;">
+                                刷新
                             </button>
                         </div>
                     `;

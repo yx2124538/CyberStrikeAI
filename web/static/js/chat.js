@@ -139,51 +139,43 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null) {
     
     // 解析 Markdown 或 HTML 格式
     let formattedContent;
+    const defaultSanitizeConfig = {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr'],
+        ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'class'],
+        ALLOW_DATA_ATTR: false,
+    };
     
-    // 先使用 DOMPurify 清理（如果可用），这样可以处理已经是 HTML 的内容
-    if (typeof DOMPurify !== 'undefined') {
-        // 配置 DOMPurify 允许的标签和属性
-        const sanitizeConfig = {
-            // 允许基本的 Markdown 格式化标签
-            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'code', 'pre', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr'],
-            ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'class'],
-            ALLOW_DATA_ATTR: false,
-        };
-        
-        // 如果内容看起来已经是 HTML（包含 HTML 标签），直接清理
-        // 否则先用 marked.js 解析 Markdown，再清理
-        if (typeof marked !== 'undefined' && !/<[a-z][\s\S]*>/i.test(content)) {
-            // 内容不包含 HTML 标签，可能是 Markdown，使用 marked.js 解析
-            try {
-                marked.setOptions({
-                    breaks: true,
-                    gfm: true,
-                });
-                let parsedContent = marked.parse(content);
-                formattedContent = DOMPurify.sanitize(parsedContent, sanitizeConfig);
-            } catch (e) {
-                console.error('Markdown 解析失败:', e);
-                // 降级处理：直接清理原始内容
-                formattedContent = DOMPurify.sanitize(content, sanitizeConfig);
-            }
-        } else {
-            // 内容包含 HTML 标签或 marked.js 不可用，直接清理
-            formattedContent = DOMPurify.sanitize(content, sanitizeConfig);
+    const parseMarkdown = (raw) => {
+        if (typeof marked === 'undefined') {
+            return null;
         }
-    } else if (typeof marked !== 'undefined') {
-        // 没有 DOMPurify，但有 marked.js
         try {
             marked.setOptions({
                 breaks: true,
                 gfm: true,
             });
-            formattedContent = marked.parse(content);
+            return marked.parse(raw);
         } catch (e) {
             console.error('Markdown 解析失败:', e);
+            return null;
+        }
+    };
+    
+    if (typeof DOMPurify !== 'undefined') {
+        let parsedContent = parseMarkdown(content);
+        if (!parsedContent) {
+            // 如果 Markdown 解析失败或 marked 不可用，则退回原始内容
+            parsedContent = content;
+        }
+        formattedContent = DOMPurify.sanitize(parsedContent, defaultSanitizeConfig);
+    } else if (typeof marked !== 'undefined') {
+        const parsedContent = parseMarkdown(content);
+        if (parsedContent) {
+            formattedContent = parsedContent;
+        } else {
             formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
         }
     } else {
-        // 都没有，简单转义
         formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
     }
     

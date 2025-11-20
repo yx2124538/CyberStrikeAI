@@ -24,6 +24,7 @@ type Agent struct {
 	openAIClient         *http.Client
 	config               *config.OpenAIConfig
 	agentConfig          *config.AgentConfig
+	memoryCompressor     *MemoryCompressor
 	mcpServer            *mcp.Server
 	externalMCPMgr       *mcp.ExternalMCPManager // 外部MCP管理器
 	logger               *zap.Logger
@@ -89,13 +90,32 @@ func NewAgent(cfg *config.OpenAIConfig, agentCfg *config.AgentConfig, mcpServer 
 
 	// 增加超时时间到30分钟，以支持长时间运行的AI推理
 	// 特别是当使用流式响应或处理复杂任务时
+	httpClient := &http.Client{
+		Timeout:   30 * time.Minute, // 从5分钟增加到30分钟
+		Transport: transport,
+	}
+
+	var memoryCompressor *MemoryCompressor
+	if cfg != nil {
+		mc, err := NewMemoryCompressor(MemoryCompressorConfig{
+			OpenAIConfig: cfg,
+			HTTPClient:   httpClient,
+			Logger:       logger,
+		})
+		if err != nil {
+			logger.Warn("初始化MemoryCompressor失败，将跳过上下文压缩", zap.Error(err))
+		} else {
+			memoryCompressor = mc
+		}
+	} else {
+		logger.Warn("OpenAI配置为空，无法初始化MemoryCompressor")
+	}
+
 	return &Agent{
-		openAIClient: &http.Client{
-			Timeout:   30 * time.Minute, // 从5分钟增加到30分钟
-			Transport: transport,
-		},
+		openAIClient:         httpClient,
 		config:               cfg,
 		agentConfig:          agentCfg,
+		memoryCompressor:     memoryCompressor,
 		mcpServer:            mcpServer,
 		externalMCPMgr:       externalMCPMgr,
 		logger:               logger,
@@ -417,11 +437,27 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 
 	maxIterations := a.maxIterations
 	for i := 0; i < maxIterations; i++ {
+		// 每轮调用前先尝试压缩，防止历史消息持续膨胀
+		messages = a.applyMemoryCompression(ctx, messages)
+
 		// 检查是否是最后一次迭代
 		isLastIteration := (i == maxIterations-1)
 
 		// 获取可用工具
 		tools := a.getAvailableTools()
+
+		// 记录当前上下文的Token用量，展示压缩器运行状态
+		if a.memoryCompressor != nil {
+			totalTokens, systemCount, regularCount := a.memoryCompressor.totalTokensFor(messages)
+			a.logger.Info("memory compressor context stats",
+				zap.Int("iteration", i+1),
+				zap.Int("messagesCount", len(messages)),
+				zap.Int("systemMessages", systemCount),
+				zap.Int("regularMessages", regularCount),
+				zap.Int("totalTokens", totalTokens),
+				zap.Int("maxTotalTokens", a.memoryCompressor.maxTotalTokens),
+			)
+		}
 
 		// 发送迭代开始事件
 		if i == 0 {
@@ -479,6 +515,25 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 		}
 
 		if response.Error != nil {
+			if handled, toolName := a.handleMissingToolError(response.Error.Message, &messages); handled {
+				sendProgress("warning", fmt.Sprintf("模型尝试调用不存在的工具：%s，已提示其改用可用工具。", toolName), map[string]interface{}{
+					"toolName": toolName,
+				})
+				a.logger.Warn("模型调用了不存在的工具，将重试",
+					zap.String("tool", toolName),
+					zap.String("error", response.Error.Message),
+				)
+				continue
+			}
+			if a.handleToolRoleError(response.Error.Message, &messages) {
+				sendProgress("warning", "检测到未配对的工具结果，已自动修复上下文并重试。", map[string]interface{}{
+					"error": response.Error.Message,
+				})
+				a.logger.Warn("检测到未配对的工具消息，已修复并重试",
+					zap.String("error", response.Error.Message),
+				)
+				continue
+			}
 			result.Response = ""
 			return result, fmt.Errorf("OpenAI错误: %s", response.Error.Message)
 		}
@@ -601,6 +656,7 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 					Role:    "user",
 					Content: "这是最后一次迭代。请总结到目前为止的所有测试结果、发现的问题和已完成的工作。如果需要继续测试，请提供详细的下一步执行计划。请直接回复，不要调用工具。",
 				})
+				messages = a.applyMemoryCompression(ctx, messages)
 				// 立即调用OpenAI获取总结
 				summaryResponse, err := a.callOpenAI(ctx, messages, []Tool{}) // 不提供工具，强制AI直接回复
 				if err == nil && summaryResponse != nil && len(summaryResponse.Choices) > 0 {
@@ -639,6 +695,7 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 				Role:    "user",
 				Content: "这是最后一次迭代。请总结到目前为止的所有测试结果、发现的问题和已完成的工作。如果需要继续测试，请提供详细的下一步执行计划。请直接回复，不要调用工具。",
 			})
+			messages = a.applyMemoryCompression(ctx, messages)
 			// 立即调用OpenAI获取总结
 			summaryResponse, err := a.callOpenAI(ctx, messages, []Tool{}) // 不提供工具，强制AI直接回复
 			if err == nil && summaryResponse != nil && len(summaryResponse.Choices) > 0 {
@@ -674,6 +731,7 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 		Content: fmt.Sprintf("已达到最大迭代次数（%d轮）。请总结到目前为止的所有测试结果、发现的问题和已完成的工作。如果需要继续测试，请提供详细的下一步执行计划。请直接回复，不要调用工具。", a.maxIterations),
 	}
 	messages = append(messages, finalSummaryPrompt)
+	messages = a.applyMemoryCompression(ctx, messages)
 
 	summaryResponse, err := a.callOpenAI(ctx, messages, []Tool{}) // 不提供工具，强制AI直接回复
 	if err == nil && summaryResponse != nil && len(summaryResponse.Choices) > 0 {
@@ -1052,35 +1110,6 @@ func (a *Agent) callOpenAISingle(ctx context.Context, messages []ChatMessage, to
 	return &response, nil
 }
 
-// parseToolCall 解析工具调用
-func (a *Agent) parseToolCall(content string) (map[string]interface{}, error) {
-	// 简单解析，实际应该更复杂
-	// 格式: [TOOL_CALL]tool_name:arg1=value1,arg2=value2
-	if !strings.HasPrefix(content, "[TOOL_CALL]") {
-		return nil, fmt.Errorf("不是有效的工具调用格式")
-	}
-
-	parts := strings.Split(content[len("[TOOL_CALL]"):], ":")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("工具调用格式错误")
-	}
-
-	toolName := strings.TrimSpace(parts[0])
-	argsStr := strings.TrimSpace(parts[1])
-
-	args := make(map[string]interface{})
-	argPairs := strings.Split(argsStr, ",")
-	for _, pair := range argPairs {
-		kv := strings.Split(pair, "=")
-		if len(kv) == 2 {
-			args[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
-		}
-	}
-
-	args["_tool_name"] = toolName
-	return args, nil
-}
-
 // ToolExecutionResult 工具执行结果
 type ToolExecutionResult struct {
 	Result      string
@@ -1285,4 +1314,145 @@ func (a *Agent) formatToolError(toolName string, args map[string]interface{}, er
 4. 如果错误信息中包含有用信息，可以基于这些信息继续分析`, toolName, args, err)
 
 	return errorMsg
+}
+
+// applyMemoryCompression 在调用LLM前对消息进行压缩，避免超过token限制
+func (a *Agent) applyMemoryCompression(ctx context.Context, messages []ChatMessage) []ChatMessage {
+	if a.memoryCompressor == nil {
+		return messages
+	}
+
+	compressed, changed, err := a.memoryCompressor.CompressHistory(ctx, messages)
+	if err != nil {
+		a.logger.Warn("上下文压缩失败，将使用原始消息继续", zap.Error(err))
+		return messages
+	}
+	if changed {
+		a.logger.Info("历史上下文已压缩",
+			zap.Int("originalMessages", len(messages)),
+			zap.Int("compressedMessages", len(compressed)),
+		)
+		return compressed
+	}
+
+	return messages
+}
+
+// handleMissingToolError 当LLM调用不存在的工具时，向其追加提示消息并允许继续迭代
+func (a *Agent) handleMissingToolError(errMsg string, messages *[]ChatMessage) (bool, string) {
+	lowerMsg := strings.ToLower(errMsg)
+	if !(strings.Contains(lowerMsg, "non-exist tool") || strings.Contains(lowerMsg, "non exist tool")) {
+		return false, ""
+	}
+
+	toolName := extractQuotedToolName(errMsg)
+	if toolName == "" {
+		toolName = "unknown_tool"
+	}
+
+	notice := fmt.Sprintf("System notice: the previous call failed with error: %s. Please verify tool availability and proceed using existing tools or pure reasoning.", errMsg)
+	*messages = append(*messages, ChatMessage{
+		Role:    "user",
+		Content: notice,
+	})
+
+	return true, toolName
+}
+
+// handleToolRoleError 自动修复因缺失tool_calls导致的OpenAI错误
+func (a *Agent) handleToolRoleError(errMsg string, messages *[]ChatMessage) bool {
+	if messages == nil {
+		return false
+	}
+
+	lowerMsg := strings.ToLower(errMsg)
+	if !(strings.Contains(lowerMsg, "role 'tool'") && strings.Contains(lowerMsg, "tool_calls")) {
+		return false
+	}
+
+	fixed := a.repairOrphanToolMessages(messages)
+	if !fixed {
+		return false
+	}
+
+	notice := "System notice: the previous call failed because some tool outputs lost their corresponding assistant tool_calls context. The history has been repaired. Please continue."
+	*messages = append(*messages, ChatMessage{
+		Role:    "user",
+		Content: notice,
+	})
+
+	return true
+}
+
+// repairOrphanToolMessages 清理失去配对的tool消息，避免OpenAI报错
+func (a *Agent) repairOrphanToolMessages(messages *[]ChatMessage) bool {
+	if messages == nil {
+		return false
+	}
+
+	msgs := *messages
+	if len(msgs) == 0 {
+		return false
+	}
+
+	pending := make(map[string]int)
+	cleaned := make([]ChatMessage, 0, len(msgs))
+	removed := false
+
+	for _, msg := range msgs {
+		switch strings.ToLower(msg.Role) {
+		case "assistant":
+			if len(msg.ToolCalls) > 0 {
+				for _, tc := range msg.ToolCalls {
+					if tc.ID != "" {
+						pending[tc.ID]++
+					}
+				}
+			}
+			cleaned = append(cleaned, msg)
+		case "tool":
+			callID := msg.ToolCallID
+			if callID == "" {
+				removed = true
+				continue
+			}
+			if count, exists := pending[callID]; exists && count > 0 {
+				if count == 1 {
+					delete(pending, callID)
+				} else {
+					pending[callID] = count - 1
+				}
+				cleaned = append(cleaned, msg)
+			} else {
+				removed = true
+				continue
+			}
+		default:
+			cleaned = append(cleaned, msg)
+		}
+	}
+
+	if removed {
+		a.logger.Warn("移除了失配的tool消息以修复对话历史",
+			zap.Int("original_messages", len(msgs)),
+			zap.Int("cleaned_messages", len(cleaned)),
+		)
+		*messages = cleaned
+	}
+
+	return removed
+}
+
+// extractQuotedToolName 尝试从错误信息中提取被引用的工具名称
+func extractQuotedToolName(errMsg string) string {
+	start := strings.Index(errMsg, "\"")
+	if start == -1 {
+		return ""
+	}
+	rest := errMsg[start+1:]
+	end := strings.Index(rest, "\"")
+	if end == -1 {
+		return ""
+	}
+	return rest[:end]
 }

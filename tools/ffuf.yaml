@@ -36,12 +36,6 @@ parameters:
     flag: "-w"
     format: "flag"
   
-  - name: "mode"
-    type: "string"
-    description: "模糊测试模式（directory, vhost, parameter）"
-    required: false
-    default: "directory"
-  
   - name: "match_codes"
     type: "string"
     description: "匹配的HTTP状态码（逗号分隔）"

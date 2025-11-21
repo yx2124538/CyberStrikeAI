@@ -47,7 +47,7 @@ parameters:
     type: "bool"
     description: "启用表单提取"
     required: false
-    flag: "-form"
+    flag: "-forms"
     format: "flag"
     default: true
   

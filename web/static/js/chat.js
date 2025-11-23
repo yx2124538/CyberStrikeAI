@@ -558,7 +558,10 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
         }
     };
     
-    if (typeof DOMPurify !== 'undefined') {
+    // 对于用户消息，直接转义HTML，不进行Markdown解析，以保留所有特殊字符
+    if (role === 'user') {
+        formattedContent = escapeHtml(content).replace(/\n/g, '<br>');
+    } else if (typeof DOMPurify !== 'undefined') {
         let parsedContent = parseMarkdown(content);
         if (!parsedContent) {
             // 如果 Markdown 解析失败或 marked 不可用，则退回原始内容

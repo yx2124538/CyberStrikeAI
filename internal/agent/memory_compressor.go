@@ -1,18 +1,16 @@
 package agent
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"cyberstrike-ai/internal/config"
+	"cyberstrike-ai/internal/openai"
 
 	"github.com/pkoukk/tiktoken-go"
 	"go.uber.org/zap"
@@ -143,15 +141,15 @@ func (mc *MemoryCompressor) UpdateConfig(cfg *config.OpenAIConfig) {
 	if cfg == nil {
 		return
 	}
-	
+
 	// 更新summaryModel字段
 	if cfg.Model != "" {
 		mc.summaryModel = cfg.Model
 	}
-	
+
 	// 更新completionClient中的配置（如果是OpenAICompletionClient）
 	if openAIClient, ok := mc.completionClient.(*OpenAICompletionClient); ok {
-		openAIClient.config = cfg
+		openAIClient.UpdateConfig(cfg)
 		mc.logger.Info("MemoryCompressor配置已更新",
 			zap.String("model", cfg.Model),
 		)
@@ -410,9 +408,9 @@ type CompletionClient interface {
 
 // OpenAICompletionClient 基于 OpenAI Chat Completion。
 type OpenAICompletionClient struct {
-	config     *config.OpenAIConfig
-	httpClient *http.Client
-	logger     *zap.Logger
+	config *config.OpenAIConfig
+	client *openai.Client
+	logger *zap.Logger
 }
 
 // NewOpenAICompletionClient 创建 OpenAICompletionClient。
@@ -421,9 +419,17 @@ func NewOpenAICompletionClient(cfg *config.OpenAIConfig, client *http.Client, lo
 		logger = zap.NewNop()
 	}
 	return &OpenAICompletionClient{
-		config:     cfg,
-		httpClient: client,
-		logger:     logger,
+		config: cfg,
+		client: openai.NewClient(cfg, client, logger),
+		logger: logger,
+	}
+}
+
+// UpdateConfig 更新底层配置。
+func (c *OpenAICompletionClient) UpdateConfig(cfg *config.OpenAIConfig) {
+	c.config = cfg
+	if c.client != nil {
+		c.client.UpdateConfig(cfg)
 	}
 }
 
@@ -443,11 +449,6 @@ func (c *OpenAICompletionClient) Complete(ctx context.Context, model string, pro
 		},
 	}
 
-	body, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", err
-	}
-
 	requestCtx := ctx
 	var cancel context.CancelFunc
 	if timeout > 0 {
@@ -455,57 +456,14 @@ func (c *OpenAICompletionClient) Complete(ctx context.Context, model string, pro
 		defer cancel()
 	}
 
-	// 处理 BaseURL 路径拼接：移除末尾斜杠，然后添加 /chat/completions
-	baseURL := strings.TrimSuffix(c.config.BaseURL, "/")
-	url := baseURL + "/chat/completions"
-
-	c.logger.Debug("calling completion API",
-		zap.String("url", url),
-		zap.String("model", model),
-		zap.Int("prompt_length", len(prompt)))
-
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		// 读取响应体以获取更详细的错误信息
-		bodyBytes, readErr := io.ReadAll(resp.Body)
-		errorDetail := resp.Status
-		if readErr == nil && len(bodyBytes) > 0 {
-			// 尝试解析错误响应
-			var errorResp struct {
-				Error struct {
-					Message string `json:"message"`
-					Type    string `json:"type"`
-					Code    string `json:"code"`
-				} `json:"error"`
-			}
-			if json.Unmarshal(bodyBytes, &errorResp) == nil && errorResp.Error.Message != "" {
-				errorDetail = fmt.Sprintf("%s: %s", resp.Status, errorResp.Error.Message)
-			} else {
-				errorDetail = fmt.Sprintf("%s: %s", resp.Status, string(bodyBytes))
-			}
-		}
-		c.logger.Warn("completion API request failed",
-			zap.Int("status_code", resp.StatusCode),
-			zap.String("url", url),
-			zap.String("model", model),
-			zap.String("error", errorDetail))
-		return "", fmt.Errorf("openai completion failed, status: %s", errorDetail)
-	}
-
 	var completion OpenAIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&completion); err != nil {
+	if c.client == nil {
+		return "", errors.New("openai completion client not initialized")
+	}
+	if err := c.client.ChatCompletion(requestCtx, reqBody, &completion); err != nil {
+		if apiErr, ok := err.(*openai.APIError); ok {
+			return "", fmt.Errorf("openai completion failed, status: %d, body: %s", apiErr.StatusCode, apiErr.Body)
+		}
 		return "", err
 	}
 	if completion.Error != nil {

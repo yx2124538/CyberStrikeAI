@@ -1,11 +1,9 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -14,6 +12,7 @@ import (
 
 	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/mcp"
+	"cyberstrike-ai/internal/openai"
 	"cyberstrike-ai/internal/storage"
 
 	"go.uber.org/zap"
@@ -21,7 +20,7 @@ import (
 
 // Agent AI代理
 type Agent struct {
-	openAIClient         *http.Client
+	openAIClient         *openai.Client
 	config               *config.OpenAIConfig
 	agentConfig          *config.AgentConfig
 	memoryCompressor     *MemoryCompressor
@@ -94,6 +93,7 @@ func NewAgent(cfg *config.OpenAIConfig, agentCfg *config.AgentConfig, mcpServer 
 		Timeout:   30 * time.Minute, // 从5分钟增加到30分钟
 		Transport: transport,
 	}
+	llmClient := openai.NewClient(cfg, httpClient, logger)
 
 	var memoryCompressor *MemoryCompressor
 	if cfg != nil {
@@ -112,7 +112,7 @@ func NewAgent(cfg *config.OpenAIConfig, agentCfg *config.AgentConfig, mcpServer 
 	}
 
 	return &Agent{
-		openAIClient:         httpClient,
+		openAIClient:         llmClient,
 		config:               cfg,
 		agentConfig:          agentCfg,
 		memoryCompressor:     memoryCompressor,
@@ -1016,95 +1016,17 @@ func (a *Agent) callOpenAISingle(ctx context.Context, messages []ChatMessage, to
 		reqBody.Tools = tools
 	}
 
-	jsonData, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	// 记录请求大小（用于诊断）
-	requestSize := len(jsonData)
 	a.logger.Debug("准备发送OpenAI请求",
 		zap.Int("messagesCount", len(messages)),
-		zap.Int("requestSizeKB", requestSize/1024),
 		zap.Int("toolsCount", len(tools)),
 	)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", a.config.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+a.config.APIKey)
-
-	// 记录请求开始时间
-	requestStartTime := time.Now()
-	resp, err := a.openAIClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	// 记录响应头接收时间
-	headerReceiveTime := time.Now()
-	headerReceiveDuration := headerReceiveTime.Sub(requestStartTime)
-
-	a.logger.Debug("收到OpenAI响应头",
-		zap.Int("statusCode", resp.StatusCode),
-		zap.Duration("headerReceiveDuration", headerReceiveDuration),
-		zap.Int64("contentLength", resp.ContentLength),
-	)
-
-	// 使用带超时的读取（通过context控制）
-	bodyChan := make(chan []byte, 1)
-	errChan := make(chan error, 1)
-
-	go func() {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			errChan <- err
-			return
-		}
-		bodyChan <- body
-	}()
-
-	var body []byte
-	select {
-	case body = <-bodyChan:
-		// 读取成功
-		bodyReceiveTime := time.Now()
-		bodyReceiveDuration := bodyReceiveTime.Sub(headerReceiveTime)
-		totalDuration := bodyReceiveTime.Sub(requestStartTime)
-
-		a.logger.Debug("完成读取OpenAI响应体",
-			zap.Int("bodySizeKB", len(body)/1024),
-			zap.Duration("bodyReceiveDuration", bodyReceiveDuration),
-			zap.Duration("totalDuration", totalDuration),
-		)
-	case err := <-errChan:
-		return nil, err
-	case <-ctx.Done():
-		return nil, fmt.Errorf("读取响应体超时: %w", ctx.Err())
-	case <-time.After(25 * time.Minute):
-		// 额外的安全超时：25分钟（小于30分钟的总超时）
-		return nil, fmt.Errorf("读取响应体超时（超过25分钟）")
-	}
-
-	// 记录响应内容（用于调试）
-	if resp.StatusCode != http.StatusOK {
-		a.logger.Warn("OpenAI API返回非200状态码",
-			zap.Int("status", resp.StatusCode),
-			zap.String("body", string(body)),
-		)
-	}
-
 	var response OpenAIResponse
-	if err := json.Unmarshal(body, &response); err != nil {
-		a.logger.Error("解析OpenAI响应失败",
-			zap.Error(err),
-			zap.String("body", string(body)),
-		)
-		return nil, fmt.Errorf("解析响应失败: %w, 响应内容: %s", err, string(body))
+	if a.openAIClient == nil {
+		return nil, fmt.Errorf("OpenAI客户端未初始化")
+	}
+	if err := a.openAIClient.ChatCompletion(ctx, reqBody, &response); err != nil {
+		return nil, err
 	}
 
 	return &response, nil

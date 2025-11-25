@@ -1,11 +1,10 @@
 package attackchain
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/database"
 	"cyberstrike-ai/internal/mcp"
+	"cyberstrike-ai/internal/openai"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -24,7 +24,7 @@ import (
 type Builder struct {
 	db           *database.DB
 	logger       *zap.Logger
-	openAIClient *http.Client
+	openAIClient *openai.Client
 	openAIConfig *config.OpenAIConfig
 	tokenCounter agent.TokenCounter
 	maxTokens    int // 最大tokens限制，默认100000
@@ -49,6 +49,7 @@ func NewBuilder(db *database.DB, openAIConfig *config.OpenAIConfig, logger *zap.
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
 	}
+	httpClient := &http.Client{Timeout: 5 * time.Minute, Transport: transport}
 
 	maxTokens := 100000 // 默认100k tokens，可以根据模型调整
 	// 根据模型设置合理的默认值
@@ -66,7 +67,7 @@ func NewBuilder(db *database.DB, openAIConfig *config.OpenAIConfig, logger *zap.
 	return &Builder{
 		db:           db,
 		logger:       logger,
-		openAIClient: &http.Client{Timeout: 5 * time.Minute, Transport: transport},
+		openAIClient: openai.NewClient(openAIConfig, httpClient, logger),
 		openAIConfig: openAIConfig,
 		tokenCounter: agent.NewTikTokenCounter(),
 		maxTokens:    maxTokens,
@@ -962,30 +963,6 @@ func (b *Builder) summarizeContextChunk(ctx context.Context, chunk *ContextChunk
 		"max_tokens":  4000, // 增加摘要长度，以容纳更详细的内容
 	}
 
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", b.openAIConfig.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+b.openAIConfig.APIKey)
-
-	resp, err := b.openAIClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API返回错误: %d, %s", resp.StatusCode, string(body))
-	}
-
 	var apiResponse struct {
 		Choices []struct {
 			Message struct {
@@ -994,8 +971,11 @@ func (b *Builder) summarizeContextChunk(ctx context.Context, chunk *ContextChunk
 		} `json:"choices"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return "", fmt.Errorf("解析响应失败: %w", err)
+	if b.openAIClient == nil {
+		return "", fmt.Errorf("OpenAI客户端未初始化")
+	}
+	if err := b.openAIClient.ChatCompletion(ctx, requestBody, &apiResponse); err != nil {
+		return "", fmt.Errorf("请求失败: %w", err)
 	}
 
 	if len(apiResponse.Choices) == 0 {
@@ -1076,30 +1056,6 @@ AI回复：
 		"max_tokens":  1000,
 	}
 
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", b.openAIConfig.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+b.openAIConfig.APIKey)
-
-	resp, err := b.openAIClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API返回错误: %d, %s", resp.StatusCode, string(body))
-	}
-
 	var apiResponse struct {
 		Choices []struct {
 			Message struct {
@@ -1108,8 +1064,11 @@ AI回复：
 		} `json:"choices"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return "", fmt.Errorf("解析响应失败: %w", err)
+	if b.openAIClient == nil {
+		return "", fmt.Errorf("OpenAI客户端未初始化")
+	}
+	if err := b.openAIClient.ChatCompletion(ctx, requestBody, &apiResponse); err != nil {
+		return "", fmt.Errorf("请求失败: %w", err)
 	}
 
 	if len(apiResponse.Choices) == 0 {
@@ -1277,39 +1236,6 @@ func (b *Builder) callAIForChainGeneration(ctx context.Context, prompt string) (
 		"max_tokens":  8000,
 	}
 
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return "", fmt.Errorf("序列化请求失败: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", b.openAIConfig.BaseURL+"/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("创建请求失败: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+b.openAIConfig.APIKey)
-
-	resp, err := b.openAIClient.Do(req)
-	if err != nil {
-		// 检查是否是上下文过长错误
-		if strings.Contains(err.Error(), "context") || strings.Contains(err.Error(), "length") {
-			return "", fmt.Errorf("context length exceeded")
-		}
-		return "", fmt.Errorf("请求失败: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		bodyStr := string(body)
-		// 检查是否是上下文过长错误
-		if strings.Contains(bodyStr, "context") || strings.Contains(bodyStr, "length") || strings.Contains(bodyStr, "too long") {
-			return "", fmt.Errorf("context length exceeded")
-		}
-		return "", fmt.Errorf("API返回错误: %d, %s", resp.StatusCode, bodyStr)
-	}
-
 	var apiResponse struct {
 		Choices []struct {
 			Message struct {
@@ -1318,8 +1244,20 @@ func (b *Builder) callAIForChainGeneration(ctx context.Context, prompt string) (
 		} `json:"choices"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
-		return "", fmt.Errorf("解析响应失败: %w", err)
+	if b.openAIClient == nil {
+		return "", fmt.Errorf("OpenAI客户端未初始化")
+	}
+	if err := b.openAIClient.ChatCompletion(ctx, requestBody, &apiResponse); err != nil {
+		var apiErr *openai.APIError
+		if errors.As(err, &apiErr) {
+			bodyStr := strings.ToLower(apiErr.Body)
+			if strings.Contains(bodyStr, "context") || strings.Contains(bodyStr, "length") || strings.Contains(bodyStr, "too long") {
+				return "", fmt.Errorf("context length exceeded")
+			}
+		} else if strings.Contains(strings.ToLower(err.Error()), "context") || strings.Contains(strings.ToLower(err.Error()), "length") {
+			return "", fmt.Errorf("context length exceeded")
+		}
+		return "", fmt.Errorf("请求失败: %w", err)
 	}
 
 	if len(apiResponse.Choices) == 0 {

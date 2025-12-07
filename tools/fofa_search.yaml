@@ -204,15 +204,53 @@ description: |
   - 威胁情报收集
   - Bug bounty信息收集
 
-  **查询语法示例：**
+  **查询语法说明：**
+
+  **基础查询：**
+  - 直接输入查询语句，将从标题、HTML内容、HTTP头信息、URL字段中搜索
+  - 如果查询表达式有多个与或关系，尽量在外面用括号包含起来，例如：`(app="Apache" || app="Nginx") && country="CN"`
+
+  **逻辑连接符：**
+  - `=` - 匹配，=""时，可查询不存在字段或者值为空的情况
+  - `==` - 完全匹配，==""时，可查询存在且值为空的情况
+  - `&&` - 与（AND）
+  - `||` - 或（OR）
+  - `!=` - 不匹配，!=""时，可查询值不为空的情况
+  - `*=` - 模糊匹配，使用*或者?进行搜索
+  - `()` - 确认查询优先级，括号内容优先级最高
+
+  **常用查询语法分类：**
+
+  **基础类：** `ip`（支持IPv4/IPv6/C段）、`port`、`domain`、`host`、`os`、`server`、`asn`、`org`、`is_domain`、`is_ipv6`
+
+  **标记类：** `app`（应用识别）、`fid`（站点指纹）、`product`、`product.version`、`category`、`type`（service/subdomain）、`cloud_name`、`is_cloud`、`is_fraud`、`is_honeypot`
+
+  **协议类（type=service）：** `protocol`、`banner`、`banner_hash`、`banner_fid`、`base_protocol`（tcp/udp）
+
+  **网站类（type=subdomain）：** `title`、`header`、`header_hash`、`body`、`body_hash`、`js_name`、`js_md5`、`cname`、`cname_domain`、`icon_hash`、`status_code`、`icp`、`sdk_hash`
+
+  **地理位置：** `country`（支持代码/中文）、`region`（支持英文/中文，中文仅限中国）、`city`
+
+  **证书类：** `cert`、`cert.subject`、`cert.issuer`、`cert.subject.org`、`cert.subject.cn`、`cert.issuer.org`、`cert.issuer.cn`、`cert.domain`、`cert.is_equal`、`cert.is_valid`、`cert.is_match`、`cert.is_expired`、`jarm`、`tls.version`、`tls.ja3s`、`cert.sn`、`cert.not_after.after/before`、`cert.not_before.after/before`
+
+  **时间类：** `after`（某时间之后更新）、`before`（某时间之前更新）
+
+  **独立IP语法（不可与其他语法共用）：** `port_size`、`port_size_gt`、`port_size_lt`、`ip_ports`、`ip_country`、`ip_region`、`ip_city`、`ip_after`、`ip_before`
+
+  **常用查询示例：**
   - `app="Apache"` - 搜索Apache应用
   - `title="登录"` - 搜索标题包含"登录"的页面
   - `domain="example.com"` - 搜索特定域名
-  - `ip="1.1.1.1"` - 搜索特定IP
+  - `ip="1.1.1.1"` 或 `ip="220.181.111.1/24"` - 搜索IP或C段
   - `port="80"` - 搜索开放80端口的资产
-  - `country="CN"` - 搜索中国境内的资产
+  - `country="CN"` 或 `country="中国"` - 搜索中国境内的资产
   - `city="Beijing"` - 搜索北京的资产
   - `app="Apache" && country="CN"` - 组合查询
+  - `(app="Apache" || app="Nginx") && country="CN"` - 使用括号的复杂查询
+  - `title*="登录"` - 模糊匹配标题
+  - `after="2023-01-01" && before="2023-12-01"` - 时间范围查询
+
+  **详细语法文档：** 更多语法说明和组件列表请参考FOFA官方文档
 
 
   **注意事项：**

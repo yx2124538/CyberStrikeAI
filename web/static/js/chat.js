@@ -13,6 +13,80 @@ const mentionState = {
     selectedIndex: 0,
 };
 
+// 输入框草稿保存相关
+const DRAFT_STORAGE_KEY = 'cyberstrike-chat-draft';
+let draftSaveTimer = null;
+const DRAFT_SAVE_DELAY = 500; // 500ms防抖延迟
+
+// 保存输入框草稿到localStorage（防抖版本）
+function saveChatDraftDebounced(content) {
+    // 清除之前的定时器
+    if (draftSaveTimer) {
+        clearTimeout(draftSaveTimer);
+    }
+    
+    // 设置新的定时器
+    draftSaveTimer = setTimeout(() => {
+        saveChatDraft(content);
+    }, DRAFT_SAVE_DELAY);
+}
+
+// 保存输入框草稿到localStorage
+function saveChatDraft(content) {
+    try {
+        if (content && content.trim().length > 0) {
+            localStorage.setItem(DRAFT_STORAGE_KEY, content);
+        } else {
+            // 如果内容为空，清除保存的草稿
+            localStorage.removeItem(DRAFT_STORAGE_KEY);
+        }
+    } catch (error) {
+        // localStorage可能已满或不可用，静默失败
+        console.warn('保存草稿失败:', error);
+    }
+}
+
+// 从localStorage恢复输入框草稿
+function restoreChatDraft() {
+    try {
+        const chatInput = document.getElementById('chat-input');
+        if (!chatInput) {
+            return;
+        }
+        
+        const draft = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (draft && draft.trim().length > 0) {
+            chatInput.value = draft;
+            // 调整输入框高度以适应内容
+            adjustTextareaHeight(chatInput);
+        }
+    } catch (error) {
+        console.warn('恢复草稿失败:', error);
+    }
+}
+
+// 清除保存的草稿
+function clearChatDraft() {
+    try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch (error) {
+        console.warn('清除草稿失败:', error);
+    }
+}
+
+// 调整textarea高度以适应内容
+function adjustTextareaHeight(textarea) {
+    if (!textarea) return;
+    
+    // 重置高度以获取准确的scrollHeight
+    textarea.style.height = '44px';
+    
+    // 计算新高度（最小44px，最大不超过300px）
+    const scrollHeight = textarea.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollHeight, 44), 300);
+    textarea.style.height = newHeight + 'px';
+}
+
 // 发送消息
 async function sendMessage() {
     const input = document.getElementById('chat-input');
@@ -25,6 +99,9 @@ async function sendMessage() {
     // 显示用户消息
     addMessage('user', message);
     input.value = '';
+    
+    // 清除保存的草稿
+    clearChatDraft();
     
     // 创建进度消息容器（使用详细的进度展示）
     const progressId = addProgressMessage();
@@ -169,7 +246,12 @@ async function fetchMentionTools() {
 }
 
 function handleChatInputInput(event) {
-    updateMentionStateFromInput(event.target);
+    const textarea = event.target;
+    updateMentionStateFromInput(textarea);
+    // 自动调整输入框高度
+    adjustTextareaHeight(textarea);
+    // 保存输入内容到localStorage（防抖）
+    saveChatDraftDebounced(textarea.value);
 }
 
 function handleChatInputClick(event) {
@@ -478,6 +560,10 @@ function applyMentionSelection() {
     const newCaret = before.length + insertText.length;
     textarea.focus();
     textarea.setSelectionRange(newCaret, newCaret);
+    
+    // 调整输入框高度并保存草稿
+    adjustTextareaHeight(textarea);
+    saveChatDraftDebounced(textarea.value);
 
     deactivateMentionState();
 }
@@ -486,6 +572,8 @@ function initializeChatUI() {
     const chatInputEl = document.getElementById('chat-input');
     if (chatInputEl) {
         chatInputEl.style.height = '44px';
+        // 恢复保存的草稿
+        restoreChatDraft();
     }
 
     const messagesDiv = document.getElementById('chat-messages');
@@ -816,8 +904,21 @@ if (chatInput) {
                 deactivateMentionState();
             }
         }, 120);
+        // 失焦时立即保存草稿（不等待防抖）
+        if (chatInput.value) {
+            saveChatDraft(chatInput.value);
+        }
     });
 }
+
+// 页面卸载时立即保存草稿
+window.addEventListener('beforeunload', () => {
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput && chatInput.value) {
+        // 立即保存，不使用防抖
+        saveChatDraft(chatInput.value);
+    }
+});
 
 // 显示MCP调用详情
 async function showMCPDetail(executionId) {
@@ -1000,6 +1101,8 @@ function startNewConversation() {
     updateActiveConversation();
     // 刷新对话列表，确保显示最新的历史对话
     loadConversations();
+    // 恢复草稿（新对话时也保留用户输入）
+    restoreChatDraft();
 }
 
 // 加载对话列表（按时间分组）
@@ -1208,6 +1311,8 @@ async function loadConversation(conversationId) {
         // 清空消息区域
         const messagesDiv = document.getElementById('chat-messages');
         messagesDiv.innerHTML = '';
+        
+        // 切换对话时保留输入框内容（不清除草稿）
         
         // 加载消息
         if (conversation.messages && conversation.messages.length > 0) {

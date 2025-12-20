@@ -181,6 +181,11 @@ CyberStrikeAI 是一款 **AI 原生渗透测试协同体**，以 Go 编写，内
 - **Web 管理**：通过 Web 界面创建、更新、删除知识项，支持分类管理。
 - **检索日志**：记录所有知识检索操作，便于审计与调试。
 
+**快速开始（使用预构建知识库）：**
+1. **下载知识数据库**：从 [GitHub Releases](https://github.com/Ed1s0nZ/CyberStrikeAI/releases) 下载预构建的知识数据库文件。
+2. **解压并放置**：将下载的知识数据库文件（`knowledge.db`）解压后放到项目的 `data/` 目录下。
+3. **重启服务**：重启 CyberStrikeAI 服务，知识库即可直接使用，无需重新构建索引。
+
 **知识库配置步骤：**
 1. **启用功能**：在 `config.yaml` 中设置 `knowledge.enabled: true`：
    ```yaml

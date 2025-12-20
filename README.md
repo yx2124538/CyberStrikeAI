@@ -183,6 +183,11 @@ CyberStrikeAI ships with 100+ curated tools covering the whole kill chain:
 - **Web management** – create, update, delete knowledge items through the web UI, with category-based organization.
 - **Retrieval logs** – tracks all knowledge retrieval operations for audit and debugging.
 
+**Quick Start (Using Pre-built Knowledge Base):**
+1. **Download the knowledge database** – Download the pre-built knowledge database file from [GitHub Releases](https://github.com/Ed1s0nZ/CyberStrikeAI/releases).
+2. **Extract and place** – Extract the downloaded knowledge database file (`knowledge.db`) and place it in the project's `data/` directory.
+3. **Restart the service** – Restart the CyberStrikeAI service, and the knowledge base will be ready to use immediately without rebuilding the index.
+
 **Setting up the knowledge base:**
 1. **Enable in config** – set `knowledge.enabled: true` in `config.yaml`:
    ```yaml

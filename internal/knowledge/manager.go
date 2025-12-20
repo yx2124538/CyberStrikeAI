@@ -445,3 +445,22 @@ func (m *Manager) GetRetrievalLogs(conversationID, messageID string, limit int) 
 	return logs, nil
 }
 
+// DeleteRetrievalLog 删除检索日志
+func (m *Manager) DeleteRetrievalLog(id string) error {
+	result, err := m.db.Exec("DELETE FROM knowledge_retrieval_logs WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("删除检索日志失败: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("获取删除行数失败: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("检索日志不存在")
+	}
+
+	return nil
+}
+

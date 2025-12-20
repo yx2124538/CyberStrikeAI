@@ -928,6 +928,12 @@ function renderRetrievalLogs(logs) {
                             </svg>
                             查看详情
                         </button>
+                        <button class="btn-secondary btn-sm retrieval-log-delete-btn" onclick="deleteRetrievalLog('${escapeHtml(log.id)}', ${index})" style="margin-top: 12px; margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; color: var(--error-color, #dc3545); border-color: var(--error-color, #dc3545);" onmouseover="this.style.backgroundColor='rgba(220, 53, 69, 0.1)'; this.style.color='#dc3545';" onmouseout="this.style.backgroundColor=''; this.style.color='var(--error-color, #dc3545)';" title="删除">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            删除
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1070,6 +1076,148 @@ function filterRetrievalLogs() {
 // 刷新检索日志
 function refreshRetrievalLogs() {
     filterRetrievalLogs();
+}
+
+// 删除检索日志
+async function deleteRetrievalLog(id, index) {
+    if (!confirm('确定要删除这条检索记录吗？')) {
+        return;
+    }
+    
+    // 找到要删除的日志卡片和删除按钮
+    const logCard = document.querySelector(`.retrieval-log-card[data-index="${index}"]`);
+    const deleteButton = logCard ? logCard.querySelector('.retrieval-log-delete-btn') : null;
+    let originalButtonOpacity = '';
+    let originalButtonDisabled = false;
+    
+    // 设置删除按钮的加载状态
+    if (deleteButton) {
+        originalButtonOpacity = deleteButton.style.opacity;
+        originalButtonDisabled = deleteButton.disabled;
+        deleteButton.style.opacity = '0.5';
+        deleteButton.style.cursor = 'not-allowed';
+        deleteButton.disabled = true;
+        
+        // 添加加载动画
+        const svg = deleteButton.querySelector('svg');
+        if (svg) {
+            svg.style.animation = 'spin 1s linear infinite';
+        }
+    }
+    
+    // 立即从UI中移除该项（乐观更新）
+    if (logCard) {
+        logCard.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
+        logCard.style.opacity = '0';
+        logCard.style.transform = 'translateX(-20px)';
+        
+        // 等待动画完成后移除
+        setTimeout(() => {
+            if (logCard.parentElement) {
+                logCard.remove();
+                
+                // 更新统计信息（临时更新，稍后会重新加载）
+                updateRetrievalStatsAfterDelete();
+            }
+        }, 300);
+    }
+    
+    try {
+        const response = await apiFetch(`/api/knowledge/retrieval-logs/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || '删除检索日志失败');
+        }
+        
+        // 显示成功通知
+        showNotification('✅ 删除成功！检索记录已从系统中移除。', 'success');
+        
+        // 从内存中移除该项
+        if (retrievalLogsData && index >= 0 && index < retrievalLogsData.length) {
+            retrievalLogsData.splice(index, 1);
+        }
+        
+        // 重新加载数据以确保数据同步
+        const conversationId = document.getElementById('retrieval-logs-conversation-id')?.value.trim() || '';
+        const messageId = document.getElementById('retrieval-logs-message-id')?.value.trim() || '';
+        await loadRetrievalLogs(conversationId, messageId);
+        
+    } catch (error) {
+        console.error('删除检索日志失败:', error);
+        
+        // 如果删除失败，恢复该项显示
+        if (logCard) {
+            logCard.style.opacity = '1';
+            logCard.style.transform = '';
+            logCard.style.transition = '';
+        }
+        
+        // 恢复删除按钮状态
+        if (deleteButton) {
+            deleteButton.style.opacity = originalButtonOpacity || '';
+            deleteButton.style.cursor = '';
+            deleteButton.disabled = originalButtonDisabled;
+            const svg = deleteButton.querySelector('svg');
+            if (svg) {
+                svg.style.animation = '';
+            }
+        }
+        
+        showNotification('❌ 删除检索日志失败: ' + error.message, 'error');
+    }
+}
+
+// 临时更新统计信息（删除后）
+function updateRetrievalStatsAfterDelete() {
+    const statsContainer = document.getElementById('retrieval-stats');
+    if (!statsContainer) return;
+    
+    const allLogs = document.querySelectorAll('.retrieval-log-card');
+    const totalLogs = allLogs.length;
+    
+    // 计算成功检索数
+    const successfulLogs = Array.from(allLogs).filter(card => {
+        return card.classList.contains('has-results');
+    }).length;
+    
+    // 计算总知识项数（简化处理，实际应该从服务器获取）
+    const totalItems = Array.from(allLogs).reduce((sum, card) => {
+        const badge = card.querySelector('.retrieval-log-result-badge');
+        if (badge && badge.classList.contains('success')) {
+            const text = badge.textContent.trim();
+            const match = text.match(/(\d+)\s*项/);
+            if (match) {
+                return sum + parseInt(match[1]);
+            } else if (text === '有结果') {
+                return sum + 1; // 简化处理，假设为1
+            }
+        }
+        return sum;
+    }, 0);
+    
+    const successRate = totalLogs > 0 ? ((successfulLogs / totalLogs) * 100).toFixed(1) : 0;
+    
+    statsContainer.innerHTML = `
+        <div class="retrieval-stat-item">
+            <span class="retrieval-stat-label">总检索次数</span>
+            <span class="retrieval-stat-value">${totalLogs}</span>
+        </div>
+        <div class="retrieval-stat-item">
+            <span class="retrieval-stat-label">成功检索</span>
+            <span class="retrieval-stat-value text-success">${successfulLogs}</span>
+        </div>
+        <div class="retrieval-stat-item">
+            <span class="retrieval-stat-label">成功率</span>
+            <span class="retrieval-stat-value">${successRate}%</span>
+        </div>
+        <div class="retrieval-stat-item">
+            <span class="retrieval-stat-label">检索到知识项</span>
+            <span class="retrieval-stat-value">${totalItems}</span>
+        </div>
+    `;
 }
 
 // 显示检索日志详情

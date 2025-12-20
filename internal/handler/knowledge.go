@@ -209,6 +209,19 @@ func (h *KnowledgeHandler) GetRetrievalLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"logs": logs})
 }
 
+// DeleteRetrievalLog 删除检索日志
+func (h *KnowledgeHandler) DeleteRetrievalLog(c *gin.Context) {
+	id := c.Param("id")
+
+	if err := h.manager.DeleteRetrievalLog(id); err != nil {
+		h.logger.Error("删除检索日志失败", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
+}
+
 // GetIndexStatus 获取索引状态
 func (h *KnowledgeHandler) GetIndexStatus(c *gin.Context) {
 	status, err := h.manager.GetIndexStatus()

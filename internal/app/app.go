@@ -396,6 +396,7 @@ func setupRoutes(
 			protected.POST("/knowledge/index", knowledgeHandler.RebuildIndex)
 			protected.POST("/knowledge/scan", knowledgeHandler.ScanKnowledgeBase)
 			protected.GET("/knowledge/retrieval-logs", knowledgeHandler.GetRetrievalLogs)
+			protected.DELETE("/knowledge/retrieval-logs/:id", knowledgeHandler.DeleteRetrievalLog)
 			protected.POST("/knowledge/search", knowledgeHandler.Search)
 		}
 

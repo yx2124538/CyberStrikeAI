@@ -13,17 +13,17 @@ import (
 
 // Retriever 检索器
 type Retriever struct {
-	db        *sql.DB
-	embedder  *Embedder
-	config    *RetrievalConfig
-	logger    *zap.Logger
+	db       *sql.DB
+	embedder *Embedder
+	config   *RetrievalConfig
+	logger   *zap.Logger
 }
 
 // RetrievalConfig 检索配置
 type RetrievalConfig struct {
-	TopK              int
+	TopK                int
 	SimilarityThreshold float64
-	HybridWeight      float64
+	HybridWeight        float64
 }
 
 // NewRetriever 创建新的检索器
@@ -157,12 +157,34 @@ func (r *Retriever) Search(ctx context.Context, req *SearchRequest) ([]*Retrieva
 		// 计算余弦相似度
 		similarity := cosineSimilarity(queryEmbedding, embedding)
 
-		// 计算BM25分数
-		bm25Score := r.bm25Score(req.Query, chunkText)
+		// 计算BM25分数（考虑chunk文本、category和title）
+		// category和title是结构化字段，完全匹配时应该被优先考虑
+		chunkBM25 := r.bm25Score(req.Query, chunkText)
+		categoryBM25 := r.bm25Score(req.Query, category)
+		titleBM25 := r.bm25Score(req.Query, title)
 
-		// 过滤低相似度结果
+		// 检查category或title是否有显著匹配（这对于结构化字段很重要）
+		hasStrongKeywordMatch := categoryBM25 > 0.3 || titleBM25 > 0.3
+
+		// 综合BM25分数（用于后续排序）
+		bm25Score := math.Max(math.Max(chunkBM25, categoryBM25), titleBM25)
+
+		// 过滤策略：
+		// 1. 如果向量相似度达到阈值，通过
+		// 2. 如果category/title有显著匹配，适当放宽相似度要求（因为它们更可靠）
+		// 这样既保持了原有的过滤严格性，又能处理结构化字段匹配的情况
 		if similarity < threshold {
-			continue
+			// 只有当category或title有明显匹配时，才适当放宽阈值
+			if hasStrongKeywordMatch {
+				// 放宽到原阈值的75%，但至少要有0.35的相似度
+				// 这确保了即使关键词匹配，向量相似度也不能太低
+				relaxedThreshold := math.Max(threshold*0.75, 0.35)
+				if similarity < relaxedThreshold {
+					continue
+				}
+			} else {
+				continue
+			}
 		}
 
 		chunk := &KnowledgeChunk{
@@ -227,4 +249,3 @@ func (r *Retriever) Search(ctx context.Context, req *SearchRequest) ([]*Retrieva
 
 	return results, nil
 }
-

@@ -160,14 +160,42 @@ func (m *Manager) GetItems(category string) ([]*KnowledgeItem, error) {
 			return nil, fmt.Errorf("扫描知识项失败: %w", err)
 		}
 
-		// 解析时间
-		item.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", createdAt)
-		if item.CreatedAt.IsZero() {
-			item.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		// 解析时间 - 支持多种格式
+		timeFormats := []string{
+			"2006-01-02 15:04:05.999999999-07:00",
+			"2006-01-02 15:04:05.999999999",
+			"2006-01-02T15:04:05.999999999Z07:00",
+			"2006-01-02T15:04:05Z",
+			"2006-01-02 15:04:05",
+			time.RFC3339,
+			time.RFC3339Nano,
 		}
-		item.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", updatedAt)
-		if item.UpdatedAt.IsZero() {
-			item.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+		
+		// 解析创建时间
+		if createdAt != "" {
+			for _, format := range timeFormats {
+				parsed, err := time.Parse(format, createdAt)
+				if err == nil && !parsed.IsZero() {
+					item.CreatedAt = parsed
+					break
+				}
+			}
+		}
+		
+		// 解析更新时间
+		if updatedAt != "" {
+			for _, format := range timeFormats {
+				parsed, err := time.Parse(format, updatedAt)
+				if err == nil && !parsed.IsZero() {
+					item.UpdatedAt = parsed
+					break
+				}
+			}
+		}
+		
+		// 如果更新时间为空，使用创建时间
+		if item.UpdatedAt.IsZero() && !item.CreatedAt.IsZero() {
+			item.UpdatedAt = item.CreatedAt
 		}
 
 		items = append(items, item)
@@ -192,14 +220,42 @@ func (m *Manager) GetItem(id string) (*KnowledgeItem, error) {
 		return nil, fmt.Errorf("查询知识项失败: %w", err)
 	}
 
-	// 解析时间
-	item.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", createdAt)
-	if item.CreatedAt.IsZero() {
-		item.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	// 解析时间 - 支持多种格式
+	timeFormats := []string{
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02T15:04:05Z",
+		"2006-01-02 15:04:05",
+		time.RFC3339,
+		time.RFC3339Nano,
 	}
-	item.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999999-07:00", updatedAt)
-	if item.UpdatedAt.IsZero() {
-		item.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
+	
+	// 解析创建时间
+	if createdAt != "" {
+		for _, format := range timeFormats {
+			parsed, err := time.Parse(format, createdAt)
+			if err == nil && !parsed.IsZero() {
+				item.CreatedAt = parsed
+				break
+			}
+		}
+	}
+	
+	// 解析更新时间
+	if updatedAt != "" {
+		for _, format := range timeFormats {
+			parsed, err := time.Parse(format, updatedAt)
+			if err == nil && !parsed.IsZero() {
+				item.UpdatedAt = parsed
+				break
+			}
+		}
+	}
+	
+	// 如果更新时间为空，使用创建时间
+	if item.UpdatedAt.IsZero() && !item.CreatedAt.IsZero() {
+		item.UpdatedAt = item.CreatedAt
 	}
 
 	return item, nil

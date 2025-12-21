@@ -154,7 +154,19 @@ function renderKnowledgeItemCard(item) {
     // 格式化时间
     const createdTime = formatTime(item.createdAt);
     const updatedTime = formatTime(item.updatedAt);
-    const isRecent = item.updatedAt && (Date.now() - new Date(item.updatedAt).getTime()) < 7 * 24 * 60 * 60 * 1000;
+    
+    // 优先显示更新时间，如果没有更新时间则显示创建时间
+    const displayTime = updatedTime || createdTime;
+    const timeLabel = updatedTime ? '更新时间' : '创建时间';
+    
+    // 判断是否为最近更新（7天内）
+    let isRecent = false;
+    if (item.updatedAt && updatedTime) {
+        const updateDate = new Date(item.updatedAt);
+        if (!isNaN(updateDate.getTime())) {
+            isRecent = (Date.now() - updateDate.getTime()) < 7 * 24 * 60 * 60 * 1000;
+        }
+    }
     
     return `
         <div class="knowledge-item-card" data-id="${item.id}" data-category="${escapeHtml(item.category)}">
@@ -182,10 +194,9 @@ function renderKnowledgeItemCard(item) {
             </div>
             <div class="knowledge-item-card-footer">
                 <div class="knowledge-item-meta">
-                    <span class="knowledge-item-time" title="创建时间">🕒 ${createdTime}</span>
+                    ${displayTime ? `<span class="knowledge-item-time" title="${timeLabel}">🕒 ${displayTime}</span>` : ''}
                     ${isRecent ? '<span class="knowledge-item-badge-new">新</span>' : ''}
                 </div>
-                <div class="knowledge-item-updated">更新: ${updatedTime}</div>
             </div>
         </div>
     `;
@@ -1483,17 +1494,25 @@ function formatTime(timeStr) {
         date = new Date(timeStr);
     }
     
-    // 如果日期无效，返回原始字符串
+    // 如果日期无效，检查是否是零值时间
     if (isNaN(date.getTime())) {
+        // 检查是否是零值时间的字符串形式
+        if (typeof timeStr === 'string' && (timeStr.includes('0001-01-01') || timeStr.startsWith('0001'))) {
+            return '';
+        }
         console.warn('无法解析时间:', timeStr);
-        return timeStr;
+        return '';
     }
     
     // 检查日期是否合理（不在1970年之前，不在未来太远）
     const year = date.getFullYear();
     if (year < 1970 || year > 2100) {
+        // 如果是零值时间（0001-01-01），返回空字符串，不显示
+        if (year === 1) {
+            return '';
+        }
         console.warn('时间值不合理:', timeStr, '解析为:', date);
-        return timeStr;
+        return '';
     }
     
     return date.toLocaleString('zh-CN', {

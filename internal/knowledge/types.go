@@ -8,12 +8,40 @@ import (
 // KnowledgeItem 知识库项
 type KnowledgeItem struct {
 	ID        string    `json:"id"`
-	Category  string    `json:"category"`  // 风险类型（文件夹名）
-	Title     string    `json:"title"`      // 标题（文件名）
-	FilePath  string    `json:"filePath"`  // 文件路径
-	Content   string    `json:"content"`   // 文件内容
+	Category  string    `json:"category"` // 风险类型（文件夹名）
+	Title     string    `json:"title"`    // 标题（文件名）
+	FilePath  string    `json:"filePath"` // 文件路径
+	Content   string    `json:"content"`  // 文件内容
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// MarshalJSON 自定义JSON序列化，确保时间格式正确
+func (k *KnowledgeItem) MarshalJSON() ([]byte, error) {
+	type Alias KnowledgeItem
+	aux := &struct {
+		*Alias
+		CreatedAt string `json:"createdAt"`
+		UpdatedAt string `json:"updatedAt"`
+	}{
+		Alias: (*Alias)(k),
+	}
+
+	// 格式化创建时间
+	if k.CreatedAt.IsZero() {
+		aux.CreatedAt = ""
+	} else {
+		aux.CreatedAt = k.CreatedAt.Format(time.RFC3339)
+	}
+
+	// 格式化更新时间
+	if k.UpdatedAt.IsZero() {
+		aux.UpdatedAt = ""
+	} else {
+		aux.UpdatedAt = k.UpdatedAt.Format(time.RFC3339)
+	}
+
+	return json.Marshal(aux)
 }
 
 // KnowledgeChunk 知识块（用于向量化）
@@ -23,7 +51,7 @@ type KnowledgeChunk struct {
 	ChunkIndex int       `json:"chunkIndex"`
 	ChunkText  string    `json:"chunkText"`
 	Embedding  []float32 `json:"-"` // 向量嵌入，不序列化到JSON
-	CreatedAt time.Time `json:"createdAt"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // RetrievalResult 检索结果
@@ -59,9 +87,8 @@ func (r *RetrievalLog) MarshalJSON() ([]byte, error) {
 
 // SearchRequest 搜索请求
 type SearchRequest struct {
-	Query     string `json:"query"`
-	RiskType  string `json:"riskType,omitempty"`  // 可选：指定风险类型
-	TopK      int    `json:"topK,omitempty"`      // 返回Top-K结果，默认5
+	Query     string  `json:"query"`
+	RiskType  string  `json:"riskType,omitempty"`  // 可选：指定风险类型
+	TopK      int     `json:"topK,omitempty"`      // 返回Top-K结果，默认5
 	Threshold float64 `json:"threshold,omitempty"` // 相似度阈值，默认0.7
 }
-

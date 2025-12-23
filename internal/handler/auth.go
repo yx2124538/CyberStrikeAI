@@ -103,7 +103,7 @@ func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	}
 
 	if !h.manager.CheckPassword(oldPassword) {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "当前密码不正确"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "当前密码不正确"})
 		return
 	}
 

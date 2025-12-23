@@ -102,20 +102,32 @@ func (r *Retriever) Search(ctx context.Context, req *SearchRequest) ([]*Retrieva
 		threshold = 0.7
 	}
 
-	// 向量化查询
-	queryEmbedding, err := r.embedder.EmbedText(ctx, req.Query)
+	// 向量化查询（如果提供了risk_type，也包含在查询文本中，以便更好地匹配）
+	queryText := req.Query
+	if req.RiskType != "" {
+		// 将risk_type信息包含到查询中，格式与索引时保持一致
+		queryText = fmt.Sprintf("[风险类型: %s] %s", req.RiskType, req.Query)
+	}
+	queryEmbedding, err := r.embedder.EmbedText(ctx, queryText)
 	if err != nil {
 		return nil, fmt.Errorf("向量化查询失败: %w", err)
 	}
 
 	// 查询所有向量（或按风险类型过滤）
+	// 使用精确匹配（=）以提高性能和准确性
+	// 由于系统提供了 list_knowledge_risk_types 工具，用户应该使用准确的category名称
+	// 同时，向量嵌入中已包含category信息，即使SQL过滤不完全匹配，向量相似度也能帮助匹配
 	var rows *sql.Rows
 	if req.RiskType != "" {
+		// 使用精确匹配（=），性能更好且更准确
+		// 使用 COLLATE NOCASE 实现大小写不敏感匹配，提高容错性
+		// 注意：如果用户输入的risk_type与category不完全一致，可能匹配不到
+		// 建议用户先调用 list_knowledge_risk_types 获取准确的category名称
 		rows, err = r.db.Query(`
 			SELECT e.id, e.item_id, e.chunk_index, e.chunk_text, e.embedding, i.category, i.title
 			FROM knowledge_embeddings e
 			JOIN knowledge_base_items i ON e.item_id = i.id
-			WHERE i.category = ?
+			WHERE i.category = ? COLLATE NOCASE
 		`, req.RiskType)
 	} else {
 		rows, err = r.db.Query(`

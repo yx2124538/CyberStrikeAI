@@ -19,11 +19,68 @@ func RegisterKnowledgeTool(
 	manager *Manager,
 	logger *zap.Logger,
 ) {
-	// manager 和 retriever 在 handler 中直接使用参数
-	_ = manager // 保留参数，可能将来用于日志记录等
-	tool := mcp.Tool{
+	// 注册第一个工具：获取所有可用的风险类型列表
+	listRiskTypesTool := mcp.Tool{
+		Name:             "list_knowledge_risk_types",
+		Description:      "获取知识库中所有可用的风险类型（risk_type）列表。在搜索知识库之前，可以先调用此工具获取可用的风险类型，然后使用正确的风险类型进行精确搜索，这样可以大幅减少检索时间并提高检索准确性。",
+		ShortDescription: "获取知识库中所有可用的风险类型列表",
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+			"required":   []string{},
+		},
+	}
+
+	listRiskTypesHandler := func(ctx context.Context, args map[string]interface{}) (*mcp.ToolResult, error) {
+		categories, err := manager.GetCategories()
+		if err != nil {
+			logger.Error("获取风险类型列表失败", zap.Error(err))
+			return &mcp.ToolResult{
+				Content: []mcp.Content{
+					{
+						Type: "text",
+						Text: fmt.Sprintf("获取风险类型列表失败: %v", err),
+					},
+				},
+				IsError: true,
+			}, nil
+		}
+
+		if len(categories) == 0 {
+			return &mcp.ToolResult{
+				Content: []mcp.Content{
+					{
+						Type: "text",
+						Text: "知识库中暂无风险类型。",
+					},
+				},
+			}, nil
+		}
+
+		var resultText strings.Builder
+		resultText.WriteString(fmt.Sprintf("知识库中共有 %d 个风险类型：\n\n", len(categories)))
+		for i, category := range categories {
+			resultText.WriteString(fmt.Sprintf("%d. %s\n", i+1, category))
+		}
+		resultText.WriteString("\n提示：在调用 search_knowledge_base 工具时，可以使用上述风险类型之一作为 risk_type 参数，以缩小搜索范围并提高检索效率。")
+
+		return &mcp.ToolResult{
+			Content: []mcp.Content{
+				{
+					Type: "text",
+					Text: resultText.String(),
+				},
+			},
+		}, nil
+	}
+
+	mcpServer.RegisterTool(listRiskTypesTool, listRiskTypesHandler)
+	logger.Info("风险类型列表工具已注册", zap.String("toolName", listRiskTypesTool.Name))
+
+	// 注册第二个工具：搜索知识库（保持原有功能）
+	searchTool := mcp.Tool{
 		Name:             "search_knowledge_base",
-		Description:      "在知识库中搜索相关的安全知识。当你需要了解特定漏洞类型、攻击技术、检测方法等安全知识时，可以使用此工具进行检索。工具使用向量检索和混合搜索技术，能够根据查询内容的语义相似度和关键词匹配，自动找到最相关的知识片段。",
+		Description:      "在知识库中搜索相关的安全知识。当你需要了解特定漏洞类型、攻击技术、检测方法等安全知识时，可以使用此工具进行检索。工具使用向量检索和混合搜索技术，能够根据查询内容的语义相似度和关键词匹配，自动找到最相关的知识片段。建议：在搜索前可以先调用 list_knowledge_risk_types 工具获取可用的风险类型，然后使用正确的 risk_type 参数进行精确搜索，这样可以大幅减少检索时间。",
 		ShortDescription: "搜索知识库中的安全知识（支持向量检索和混合搜索）",
 		InputSchema: map[string]interface{}{
 			"type": "object",
@@ -34,14 +91,14 @@ func RegisterKnowledgeTool(
 				},
 				"risk_type": map[string]interface{}{
 					"type":        "string",
-					"description": "可选：指定风险类型（如：SQL注入、XSS、文件上传等），如果不指定则搜索所有类型",
+					"description": "可选：指定风险类型（如：SQL注入、XSS、文件上传等）。建议先调用 list_knowledge_risk_types 工具获取可用的风险类型列表，然后使用正确的风险类型进行精确搜索，这样可以大幅减少检索时间。如果不指定则搜索所有类型。",
 				},
 			},
 			"required": []string{"query"},
 		},
 	}
 
-	handler := func(ctx context.Context, args map[string]interface{}) (*mcp.ToolResult, error) {
+	searchHandler := func(ctx context.Context, args map[string]interface{}) (*mcp.ToolResult, error) {
 		query, ok := args["query"].(string)
 		if !ok || query == "" {
 			return &mcp.ToolResult{
@@ -182,8 +239,8 @@ func RegisterKnowledgeTool(
 		}, nil
 	}
 
-	mcpServer.RegisterTool(tool, handler)
-	logger.Info("知识检索工具已注册", zap.String("toolName", tool.Name))
+	mcpServer.RegisterTool(searchTool, searchHandler)
+	logger.Info("知识检索工具已注册", zap.String("toolName", searchTool.Name))
 }
 
 // contains 检查切片是否包含元素

@@ -250,9 +250,9 @@ func (idx *Indexer) estimateTokens(text string) int {
 
 // IndexItem 索引知识项（分块并向量化）
 func (idx *Indexer) IndexItem(ctx context.Context, itemID string) error {
-	// 获取知识项
-	var content string
-	err := idx.db.QueryRow("SELECT content FROM knowledge_base_items WHERE id = ?", itemID).Scan(&content)
+	// 获取知识项（包含category和title，用于向量化）
+	var content, category, title string
+	err := idx.db.QueryRow("SELECT content, category, title FROM knowledge_base_items WHERE id = ?", itemID).Scan(&content, &category, &title)
 	if err != nil {
 		return fmt.Errorf("获取知识项失败: %w", err)
 	}
@@ -267,13 +267,19 @@ func (idx *Indexer) IndexItem(ctx context.Context, itemID string) error {
 	chunks := idx.ChunkText(content)
 	idx.logger.Info("知识项分块完成", zap.String("itemId", itemID), zap.Int("chunks", len(chunks)))
 
-	// 向量化每个块
+	// 向量化每个块（包含category和title信息，以便向量检索时能匹配到风险类型）
 	for i, chunk := range chunks {
 		chunkPreview := chunk
 		if len(chunkPreview) > 200 {
 			chunkPreview = chunkPreview[:200] + "..."
 		}
-		embedding, err := idx.embedder.EmbedText(ctx, chunk)
+
+		// 将category和title信息包含到向量化的文本中
+		// 格式："[风险类型: {category}] [标题: {title}]\n{chunk内容}"
+		// 这样向量嵌入就会包含风险类型信息，即使SQL过滤失败，向量相似度也能帮助匹配
+		textForEmbedding := fmt.Sprintf("[风险类型: %s] [标题: %s]\n%s", category, title, chunk)
+
+		embedding, err := idx.embedder.EmbedText(ctx, textForEmbedding)
 		if err != nil {
 			idx.logger.Warn("向量化失败",
 				zap.String("itemId", itemID),

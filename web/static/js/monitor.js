@@ -295,11 +295,11 @@ function toggleProcessDetails(progressId, assistantMessageId) {
         }
     }
     
-    // 滚动到底部以便查看展开的内容
+    // 滚动到展开的详情位置，而不是滚动到底部
     if (timeline && timeline.classList.contains('expanded')) {
         setTimeout(() => {
-            const messagesDiv = document.getElementById('chat-messages');
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            // 使用 scrollIntoView 滚动到详情容器位置
+            detailsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }, 100);
     }
 }

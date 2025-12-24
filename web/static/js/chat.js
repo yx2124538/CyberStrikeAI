@@ -1871,7 +1871,7 @@ function renderAttackChain(chainData) {
                         return isComplexGraph ? 110 : 120;
                     },
                     'shape': function(ele) {
-                        // 所有节点都使用圆角矩形，参考图片风格
+                        // 所有节点都使用圆角矩形
                         return 'round-rectangle';
                     },
                     'background-color': function(ele) {
@@ -1883,11 +1883,32 @@ function renderAttackChain(chainData) {
                             return '#bbdefb';  // 更深的浅蓝色
                         }
                         
-                        // 其他节点根据风险分数，使用更饱和的背景色，增加视觉层次
-                        if (riskScore >= 80) return '#ffcdd2';  // 更饱和的浅红色
-                        if (riskScore >= 60) return '#ffe0b2';  // 更饱和的浅橙色
-                        if (riskScore >= 40) return '#fff9c4';  // 更饱和的浅黄色
-                        return '#dcedc8';  // 更饱和的浅绿色
+                        // action节点根据执行有效性显示不同颜色
+                        if (type === 'action') {
+                            const metadata = ele.data('metadata') || {};
+                            const findings = metadata.findings || [];
+                            const status = metadata.status || '';
+                            
+                            // 有效执行：有findings且status不是failed_insight
+                            const hasFindings = Array.isArray(findings) && findings.length > 0;
+                            const isFailedInsight = status === 'failed_insight';
+                            
+                            if (hasFindings && !isFailedInsight) {
+                                return '#e8f5e9';  // 浅绿色：有效执行
+                            } else {
+                                return '#f5f5f5';  // 浅灰色：无效执行
+                            }
+                        }
+                        
+                        // vulnerability节点根据风险分数显示不同颜色
+                        if (type === 'vulnerability') {
+                            if (riskScore >= 80) return '#ffcdd2';  // 更饱和的浅红色
+                            if (riskScore >= 60) return '#ffe0b2';  // 更饱和的浅橙色
+                            if (riskScore >= 40) return '#fff9c4';  // 更饱和的浅黄色
+                            return '#dcedc8';  // 更饱和的浅绿色
+                        }
+                        
+                        return '#f5f5f5';  // 默认浅灰色
                     },
                     // 根据节点类型和风险分数设置文字颜色
                     // 注意：由于标签包含类型标签和内容，颜色适用于所有文本
@@ -1899,10 +1920,32 @@ function renderAttackChain(chainData) {
                             return '#1976d2';  // 深蓝色文字
                         }
                         
-                        if (riskScore >= 80) return '#c62828';  // 深红色
-                        if (riskScore >= 60) return '#e65100';  // 深橙色
-                        if (riskScore >= 40) return '#f57f17';  // 深黄色
-                        return '#558b2f';  // 深绿色
+                        // action节点根据执行有效性显示不同文字颜色
+                        if (type === 'action') {
+                            const metadata = ele.data('metadata') || {};
+                            const findings = metadata.findings || [];
+                            const status = metadata.status || '';
+                            
+                            // 有效执行：有findings且status不是failed_insight
+                            const hasFindings = Array.isArray(findings) && findings.length > 0;
+                            const isFailedInsight = status === 'failed_insight';
+                            
+                            if (hasFindings && !isFailedInsight) {
+                                return '#2e7d32';  // 深绿色：有效执行
+                            } else {
+                                return '#757575';  // 深灰色：无效执行
+                            }
+                        }
+                        
+                        // vulnerability节点根据风险分数显示不同文字颜色
+                        if (type === 'vulnerability') {
+                            if (riskScore >= 80) return '#c62828';  // 深红色
+                            if (riskScore >= 60) return '#e65100';  // 深橙色
+                            if (riskScore >= 40) return '#f57f17';  // 深黄色
+                            return '#558b2f';  // 深绿色
+                        }
+                        
+                        return '#424242';  // 默认深灰色
                     },
                     'font-size': function(ele) {
                         // 由于标签包含类型标签和内容，使用合适的字体大小
@@ -1929,7 +1972,7 @@ function renderAttackChain(chainData) {
                         if (type === 'target') return 5;
                         return 4;
                     },
-                    'border-radius': '12px',  // 增加圆角半径，使节点更圆润美观
+                    'border-radius': '12px',  // 所有节点都使用圆角
                     'border-color': function(ele) {
                         const type = ele.data('type');
                         const riskScore = ele.data('riskScore') || 0;
@@ -1938,15 +1981,37 @@ function renderAttackChain(chainData) {
                             return '#1976d2';  // 蓝色边框
                         }
                         
-                        if (riskScore >= 80) return '#d32f2f';  // 红色边框
-                        if (riskScore >= 60) return '#f57c00';  // 橙色边框
-                        if (riskScore >= 40) return '#fbc02d';  // 黄色边框
-                        return '#689f38';  // 绿色边框
+                        // action节点根据执行有效性显示不同边框颜色
+                        if (type === 'action') {
+                            const metadata = ele.data('metadata') || {};
+                            const findings = metadata.findings || [];
+                            const status = metadata.status || '';
+                            
+                            // 有效执行：有findings且status不是failed_insight
+                            const hasFindings = Array.isArray(findings) && findings.length > 0;
+                            const isFailedInsight = status === 'failed_insight';
+                            
+                            if (hasFindings && !isFailedInsight) {
+                                return '#66bb6a';  // 绿色边框：有效执行
+                            } else {
+                                return '#9e9e9e';  // 灰色边框：无效执行
+                            }
+                        }
+                        
+                        // vulnerability节点根据风险分数显示不同边框颜色
+                        if (type === 'vulnerability') {
+                            if (riskScore >= 80) return '#d32f2f';  // 红色边框
+                            if (riskScore >= 60) return '#f57c00';  // 橙色边框
+                            if (riskScore >= 40) return '#fbc02d';  // 黄色边框
+                            return '#689f38';  // 绿色边框
+                        }
+                        
+                        return '#9e9e9e';  // 默认灰色边框
                     },
                     'border-style': function(ele) {
                         const type = ele.data('type');
-                        // target和vulnerability使用实线，action可以使用虚线
-                        if (type === 'action') return 'solid';
+                        // action节点使用虚线边框，其他使用实线
+                        if (type === 'action') return 'dashed';
                         return 'solid';
                     },
                     'overlay-padding': '12px',
@@ -2073,27 +2138,28 @@ function renderAttackChain(chainData) {
             // 目标：使用容器宽度的85-90%，让图充分展开
             const maxLevelWidth = Math.max(1, Math.ceil(nodeCount / estimatedDepth));
             const targetGraphWidth = containerWidth * 0.88;  // 使用88%的容器宽度
-            const minNodeSep = avgNodeWidth * 0.6;  // 最小间距为节点宽度的60%
+            const minNodeSep = avgNodeWidth * 0.8;  // 最小间距为节点宽度的80%（从60%增加到80%，增加水平间距）
             const calculatedNodeSep = Math.max(
                 minNodeSep,
                 Math.min(
                     (targetGraphWidth - avgNodeWidth * maxLevelWidth) / Math.max(1, maxLevelWidth - 1),
-                    avgNodeWidth * 1.5  // 最大间距不超过节点宽度的1.5倍
+                    avgNodeWidth * 2.0  // 最大间距不超过节点宽度的2.0倍（从1.5增加到2.0）
                 )
             );
             
             // 动态计算层级间距：基于容器高度和层级数
+            // 增加最小间距，避免节点重合
             const targetGraphHeight = containerHeight * 0.85;
             const calculatedRankSep = Math.max(
-                avgNodeHeight * 1.2,  // 最小为节点高度的1.2倍
+                avgNodeHeight * 1.8,  // 最小为节点高度的1.8倍（从1.2增加到1.8，增加层级间距）
                 Math.min(
                     targetGraphHeight / Math.max(estimatedDepth - 1, 1),
-                    avgNodeHeight * 2.5  // 最大不超过节点高度的2.5倍
+                    avgNodeHeight * 3.5  // 最大不超过节点高度的3.5倍（从2.5增加到3.5）
                 )
             );
             
             // 边间距：基于节点间距的合理比例
-            const calculatedEdgeSep = Math.max(30, calculatedNodeSep * 0.25);
+            const calculatedEdgeSep = Math.max(40, calculatedNodeSep * 0.3);  // 增加边间距（从30增加到40，从0.25增加到0.3）
             
             // 根据图的复杂度调整布局参数，优化可读性和空间利用率
             layoutOptions = {
@@ -2145,12 +2211,12 @@ function renderAttackChain(chainData) {
             const estimatedDepth = Math.ceil(Math.log2(Math.max(nodeCount, 2))) + 1;
             const maxLevelWidth = Math.max(1, Math.ceil(nodeCount / estimatedDepth));
             const targetGraphWidth = containerWidth * 0.88;
-            const minNodeSep = avgNodeWidth * 0.6;
+            const minNodeSep = avgNodeWidth * 0.8;  // 与布局计算保持一致
             const spacing = Math.max(
                 minNodeSep,
                 Math.min(
                     (targetGraphWidth - avgNodeWidth * maxLevelWidth) / Math.max(1, maxLevelWidth - 1),
-                    avgNodeWidth * 1.5
+                    avgNodeWidth * 2.0  // 与布局计算保持一致
                 )
             );
             
@@ -2693,6 +2759,13 @@ function showNodeDetails(nodeData) {
             html += `
                 <div class="node-detail-item">
                     <strong>工具意图:</strong> <span style="color: #0066ff; font-weight: bold;">${escapeHtml(nodeData.metadata.tool_intent)}</span>
+                </div>
+            `;
+        }
+        if (nodeData.metadata.status === 'failed_insight') {
+            html += `
+                <div class="node-detail-item">
+                    <strong>执行状态:</strong> <span style="color: #ff9800; font-weight: bold;">失败但有线索</span>
                 </div>
             `;
         }

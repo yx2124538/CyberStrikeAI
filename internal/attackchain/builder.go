@@ -330,7 +330,25 @@ func (b *Builder) formatReActInputFromJSON(reactInputJSON string) string {
 
 // buildSimplePrompt 构建简化的prompt
 func (b *Builder) buildSimplePrompt(reactInput, modelOutput string) string {
-	return fmt.Sprintf(`你是一个专业的安全测试分析师。请根据以下信息生成攻击链图。
+	return fmt.Sprintf(`你是一个专业的安全测试分析师。请根据以下对话和工具执行记录，生成清晰、有教育意义的攻击链图。
+
+## 核心原则
+
+**目标：让不懂渗透测试的同学可以通过这个攻击链路学习到知识，而不是无数个节点看花眼。**
+**即便某些工具执行或漏洞挖掘没有成功，只要它们提供了关键线索、错误提示或下一步思路，也要被保留下来。**
+
+**关键要求：**
+1. **节点标签必须简洁明了**：每个节点标签控制在15-25个汉字以内，使用简洁的动宾结构
+   - action节点要描述"做了什么"和"发现了什么"（如"扫描端口发现22/80/443"、"验证SQL注入成功"、"WAF拦截暴露厂商"）
+   - 避免冗长描述，关键信息放在metadata中详细说明
+2. **严格控制节点数量**：优先保留关键步骤，避免生成过多细碎节点。理想情况下，单个目标的攻击链应控制在8-15个节点以内
+   - 如果节点太多（>20个），优先保留最重要的节点，合并或删除次要节点
+   - 合并相似的action节点（如同一工具的连续调用，如果结果相似）
+   - 对于同一类型的多个发现，考虑合并为一个节点（如"发现多个开放端口"而不是为每个端口创建节点）
+3. **确保DAG结构**：生成的图必须是有向无环图（DAG），不允许出现循环。边的方向必须符合时间顺序和逻辑关系（从早期步骤指向后期步骤）
+   - 生成后必须检查：确保图中不存在循环（即不存在路径A→B→...→A）
+   - 如果发现循环，必须断开形成循环的边，保留最重要的连接
+4. **层次清晰**：攻击链应该呈现清晰的层次结构：目标 → 信息收集 → 漏洞发现 → 漏洞利用 → 后续行动
 
 ## ⚠️ 重要原则 - 严禁杜撰
 
@@ -342,8 +360,6 @@ func (b *Builder) buildSimplePrompt(reactInput, modelOutput string) string {
 
 如果ReAct输入中没有实际的工具执行记录，或者模型输出中明确表示任务未完成/被取消，必须返回空的攻击链（空的nodes和edges数组）。
 
-
-
 ## 最后一轮ReAct的输入（历史对话上下文）
 %s
 
@@ -352,30 +368,127 @@ func (b *Builder) buildSimplePrompt(reactInput, modelOutput string) string {
 
 ## 任务要求
 
-请根据上述信息，**仅基于实际执行的数据**生成一个清晰的攻击链图。攻击链应该包含：
-1. **target（目标）**：从用户输入中提取的实际测试目标（必须是用户明确提供的）
-2. **action（行动）**：从ReAct输入中提取的**实际执行的**工具调用和测试步骤（必须有tool_calls证据）
-3. **vulnerability（漏洞）**：从模型输出中提取的**实际发现的**漏洞（必须在输出中明确提及，不能推测）
+### 1. 节点类型（简化，只保留3种）
 
-**关键检查点：**
-- 如果ReAct输入中没有tool_calls，说明没有实际执行工具 → 只能生成target节点
-- 如果模型输出中没有明确提到发现的漏洞，不要编造vulnerability节点
-- 如果任务被取消或未完成，返回空攻击链
+**target（目标）**：从用户输入中提取测试目标（IP、域名、URL等）
+- **重要：如果对话中测试了多个不同的目标（如先测试A网页，后测试B网页），必须：**
+  - 为每个不同的目标创建独立的target节点
+  - 每个target节点只关联属于它的action和vulnerability节点
+  - 不同目标的节点之间**不应该**建立任何关联关系
+  - 这样会形成多个独立的攻击链分支，每个分支对应一个测试目标
+
+**action（行动）**：**工具执行 + AI分析结果 = 一个action节点**
+- 将每个工具执行和AI对该工具结果的分析合并为一个action节点
+- **节点标签必须简洁**：控制在15-25个汉字，使用动宾结构，描述"做了什么"和"发现了什么"
+  - 好的示例："扫描端口发现22/80/443"、"验证SQL注入成功"、"WAF拦截暴露厂商"
+  - 避免冗长描述，关键信息放在metadata中详细说明
+- 若为失败但有线索的行动，请在metadata.status中标记为"failed_insight"，并在findings中写清线索价值
+- **重要：action节点必须关联到正确的target节点（通过工具执行参数判断目标）**
+- **risk_score**：**action节点没有风险，risk_score必须设置为0**（只有vulnerability节点才有风险等级）
+
+**vulnerability（漏洞）**：从工具执行结果和AI分析中提取的**真实漏洞**（不是所有发现都是漏洞）
+- 若验证失败但能明确表明某个漏洞利用方向不可行，可作为行动节点的线索描述，而不是漏洞节点
+- **risk_score**：反映实际发现的漏洞的风险等级（高危80-100，中危60-80，低危40-60）
+
+### 2. 简化结构
+
+- 只创建target、action、vulnerability三种节点
+- 不要创建discovery、decision等节点
+- 让攻击链清晰、有教育意义
+
+### 3. 过滤规则（重要！）
+
+- **必须忽略**没有任何输出、没有线索的失败执行
+- **必须保留**失败但提供关键线索的执行，确保metadata里解释清楚
+- 只保留对学习或溯源有帮助的节点
+
+### 4. 关联关系（确保DAG结构）
+
+- target → action：目标指向属于它的所有行动（通过工具执行参数判断目标）
+- action → action：按时间顺序连接，但只连接有逻辑关系的
+  - **重要：只连接属于同一目标的action节点，不同目标的action节点之间不应该连接**
+  - **必须确保无环**：只能从早期步骤指向后期步骤，不能形成循环
+  - 优先连接直接相关的步骤，避免过度连接
+- action → vulnerability：行动发现的漏洞
+- vulnerability → vulnerability：漏洞间的因果关系
+  - **重要：只连接属于同一目标的漏洞，不同目标的漏洞之间不应该连接**
+  - **必须确保无环**：漏洞间的因果关系也必须是单向的
+
+### 5. 节点属性
+
+每个节点需要：id, type, label, risk_score, metadata
+
+**重要：risk_score规则**
+- **target节点**：可以设置适当的risk_score（如40），表示目标本身的风险
+- **action节点**：**必须设置为0**，因为行动本身没有风险，只有漏洞才有风险
+- **vulnerability节点**：必须根据漏洞严重程度设置risk_score（高危80-100，中危60-80，低危40-60）
+
+**action节点metadata必须包含：**
+- tool_name: 工具名称（必须与ReAct中的tool_calls一致）
+- tool_intent: 工具调用意图（如"端口扫描"、"漏洞扫描"、"目录枚举"等）
+- ai_analysis: AI对工具结果的分析总结（不超过100字，失败节点需解释线索价值）
+- findings: 关键发现列表（数组，如["发现80端口开放", "检测到WAF"]）
+- status: 可选，若为失败但有线索的行动，标记为"failed_insight"，并在findings中写清线索价值
+
+**target节点metadata必须包含：**
+- target: 测试目标（URL、IP、域名等）
+
+**vulnerability节点metadata必须包含：**
+- vulnerability_type: 漏洞类型
+- description: 实际发现的漏洞描述（必须与模型输出中明确提及的漏洞一致）
+- severity: 严重程度（"critical"|"high"|"medium"|"low"）
+- location: 漏洞位置
 
 ## 输出格式
 
-请以JSON格式返回攻击链，格式如下：
+请以JSON格式返回攻击链，严格按照以下格式：
+
 {
    "nodes": [
      {
        "id": "node_1",
-       "type": "target|action|vulnerability",
-       "label": "节点标签",
-       "risk_score": 0-100,
+       "type": "target",
+       "label": "测试目标: example.com",
+       "risk_score": 40,
        "metadata": {
-         "target": "目标（target节点）",
-         "tool_name": "工具名称（action节点，必须是实际调用的工具）",
-         "description": "描述（vulnerability节点，必须是实际发现的漏洞）"
+         "target": "example.com"
+       }
+     },
+     {
+       "id": "node_2",
+       "type": "action",
+       "label": "扫描端口发现80/443",
+       "risk_score": 0,
+       "metadata": {
+         "tool_name": "nmap",
+         "tool_intent": "端口扫描",
+         "ai_analysis": "使用nmap扫描发现80和443端口开放，目标运行标准Web服务",
+         "findings": ["80端口开放", "443端口开放"]
+       }
+     },
+     {
+       "id": "node_3",
+       "type": "action",
+       "label": "SQLMap扫描（工具未安装）",
+       "risk_score": 0,
+       "metadata": {
+         "tool_name": "sqlmap",
+         "tool_intent": "SQL注入测试",
+         "ai_analysis": "sqlmap工具未安装，无法进行SQL注入测试，需要先安装工具",
+         "findings": ["工具未安装，需要先安装sqlmap工具"],
+         "status": "failed_insight"
+       }
+     },
+     {
+       "id": "node_4",
+       "type": "vulnerability",
+       "label": "SQL注入漏洞",
+       "risk_score": 85,
+       "metadata": {
+         "vulnerability_type": "SQL注入",
+         "description": "在/admin/login.php发现SQL注入漏洞",
+         "severity": "high",
+         "location": "/admin/login.php"
        }
      }
    ],
@@ -383,25 +496,38 @@ func (b *Builder) buildSimplePrompt(reactInput, modelOutput string) string {
      {
        "source": "node_1",
        "target": "node_2",
-       "type": "leads_to|discovers|enables",
-       "weight": 1-5
+       "type": "leads_to",
+       "weight": 3
+     },
+     {
+       "source": "node_2",
+       "target": "node_4",
+       "type": "discovers",
+       "weight": 5
      }
    ]
-}
+ }
+
+**关键要求：**
+- 节点id必须从"node_1"开始，按顺序递增（node_1, node_2, node_3, ...）
+- 所有边的source节点id必须小于target节点id（确保DAG无环）
+- target节点必须是node_1（如果是多目标，第一个target是node_1，第二个target是node_2，以此类推）
+- 节点之间必须形成清晰的路径，不能有孤立节点
+- 如果有vulnerability节点，必须展示从target到vulnerability的完整路径
+- 边的类型只能是：leads_to、discovers、enables
 
 **再次强调：如果没有实际数据，返回空的nodes和edges数组。严禁杜撰！**
 
 只返回JSON，不要包含其他解释文字。`, reactInput, modelOutput)
 }
 
-// saveChain 保存攻击链到数据库（简化版本，移除tool_execution_id）
+// saveChain 保存攻击链到数据库
 func (b *Builder) saveChain(conversationID string, nodes []Node, edges []Edge) error {
 	// 先删除旧的攻击链数据
 	if err := b.db.DeleteAttackChain(conversationID); err != nil {
 		b.logger.Warn("删除旧攻击链失败", zap.Error(err))
 	}
 
-	// 保存节点（不保存tool_execution_id）
 	for _, node := range nodes {
 		metadataJSON, _ := json.Marshal(node.Metadata)
 		if err := b.db.SaveAttackChainNode(conversationID, node.ID, node.Type, node.Label, "", string(metadataJSON), node.RiskScore); err != nil {
@@ -496,12 +622,11 @@ func (b *Builder) callAIForChainGeneration(ctx context.Context, prompt string) (
 // ChainJSON 攻击链JSON结构
 type ChainJSON struct {
 	Nodes []struct {
-		ID              string                 `json:"id"`
-		Type            string                 `json:"type"`
-		Label           string                 `json:"label"`
-		RiskScore       int                    `json:"risk_score"`
-		ToolExecutionID string                 `json:"tool_execution_id,omitempty"`
-		Metadata        map[string]interface{} `json:"metadata"`
+		ID        string                 `json:"id"`
+		Type      string                 `json:"type"`
+		Label     string                 `json:"label"`
+		RiskScore int                    `json:"risk_score"`
+		Metadata  map[string]interface{} `json:"metadata"`
 	} `json:"nodes"`
 	Edges []struct {
 		Source string `json:"source"`

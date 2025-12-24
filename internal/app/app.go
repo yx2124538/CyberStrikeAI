@@ -234,6 +234,7 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 	monitorHandler := handler.NewMonitorHandler(mcpServer, executor, db, log.Logger)
 	monitorHandler.SetExternalMCPManager(externalMCPMgr) // 设置外部MCP管理器，以便获取外部MCP执行记录
 	conversationHandler := handler.NewConversationHandler(db, log.Logger)
+	groupHandler := handler.NewGroupHandler(db, log.Logger)
 	authHandler := handler.NewAuthHandler(authManager, cfg, configPath, log.Logger)
 	attackChainHandler := handler.NewAttackChainHandler(db, &cfg.OpenAI, log.Logger)
 	configHandler := handler.NewConfigHandler(configPath, cfg, mcpServer, executor, agent, attackChainHandler, externalMCPMgr, log.Logger)
@@ -255,6 +256,7 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 		agentHandler,
 		monitorHandler,
 		conversationHandler,
+		groupHandler,
 		configHandler,
 		externalMCPHandler,
 		attackChainHandler,
@@ -323,6 +325,7 @@ func setupRoutes(
 	agentHandler *handler.AgentHandler,
 	monitorHandler *handler.MonitorHandler,
 	conversationHandler *handler.ConversationHandler,
+	groupHandler *handler.GroupHandler,
 	configHandler *handler.ConfigHandler,
 	externalMCPHandler *handler.ExternalMCPHandler,
 	attackChainHandler *handler.AttackChainHandler,
@@ -357,7 +360,20 @@ func setupRoutes(
 		protected.POST("/conversations", conversationHandler.CreateConversation)
 		protected.GET("/conversations", conversationHandler.ListConversations)
 		protected.GET("/conversations/:id", conversationHandler.GetConversation)
+		protected.PUT("/conversations/:id", conversationHandler.UpdateConversation)
 		protected.DELETE("/conversations/:id", conversationHandler.DeleteConversation)
+		protected.PUT("/conversations/:id/pinned", groupHandler.UpdateConversationPinned)
+
+		// 对话分组
+		protected.POST("/groups", groupHandler.CreateGroup)
+		protected.GET("/groups", groupHandler.ListGroups)
+		protected.GET("/groups/:id", groupHandler.GetGroup)
+		protected.PUT("/groups/:id", groupHandler.UpdateGroup)
+		protected.DELETE("/groups/:id", groupHandler.DeleteGroup)
+		protected.PUT("/groups/:id/pinned", groupHandler.UpdateGroupPinned)
+		protected.GET("/groups/:id/conversations", groupHandler.GetGroupConversations)
+		protected.POST("/groups/conversations", groupHandler.AddConversationToGroup)
+		protected.DELETE("/groups/:id/conversations/:conversationId", groupHandler.RemoveConversationFromGroup)
 
 		// 监控
 		protected.GET("/monitor", monitorHandler.Monitor)

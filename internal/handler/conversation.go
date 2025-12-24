@@ -88,6 +88,43 @@ func (h *ConversationHandler) GetConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, conv)
 }
 
+// UpdateConversationRequest 更新对话请求
+type UpdateConversationRequest struct {
+	Title string `json:"title"`
+}
+
+// UpdateConversation 更新对话
+func (h *ConversationHandler) UpdateConversation(c *gin.Context) {
+	id := c.Param("id")
+
+	var req UpdateConversationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标题不能为空"})
+		return
+	}
+
+	if err := h.db.UpdateConversationTitle(id, req.Title); err != nil {
+		h.logger.Error("更新对话失败", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 返回更新后的对话
+	conv, err := h.db.GetConversation(id)
+	if err != nil {
+		h.logger.Error("获取更新后的对话失败", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, conv)
+}
+
 // DeleteConversation 删除对话
 func (h *ConversationHandler) DeleteConversation(c *gin.Context) {
 	id := c.Param("id")

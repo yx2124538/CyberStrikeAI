@@ -1259,7 +1259,9 @@ async function loadConversations(searchQuery = '') {
             section.appendChild(title);
 
             items.forEach(itemData => {
-                section.appendChild(createConversationListItem(itemData));
+                // 判断是否置顶
+                const isPinned = itemData.pinned || false;
+                section.appendChild(createConversationListItemWithMenu(itemData, isPinned));
             });
 
             fragment.appendChild(section);
@@ -3602,3 +3604,1167 @@ function exportAttackChain(format) {
         }
     }, 100); // 小延迟确保图形已渲染
 }
+
+// ============================================
+// 对话分组和批量管理功能
+// ============================================
+
+// 分组数据管理（使用API）
+let currentGroupId = null;
+let contextMenuConversationId = null;
+let contextMenuGroupId = null;
+let groupsCache = [];
+let conversationGroupMappingCache = {};
+
+// 加载分组列表
+async function loadGroups() {
+    try {
+        const response = await apiFetch('/api/groups');
+        groupsCache = await response.json();
+
+        const groupsList = document.getElementById('conversation-groups-list');
+        if (!groupsList) return;
+
+        groupsList.innerHTML = '';
+
+        if (!Array.isArray(groupsCache) || groupsCache.length === 0) {
+            return;
+        }
+
+        // 对分组进行排序：置顶的分组在前（后端已经排序，这里只需要按顺序显示）
+        const sortedGroups = [...groupsCache];
+
+            sortedGroups.forEach(group => {
+            const groupItem = document.createElement('div');
+            groupItem.className = 'group-item';
+            if (currentGroupId === group.id) {
+                groupItem.classList.add('active');
+            }
+            const isPinned = group.pinned || false;
+            if (isPinned) {
+                groupItem.classList.add('pinned');
+            }
+            groupItem.dataset.groupId = group.id;
+
+            const content = document.createElement('div');
+            content.className = 'group-item-content';
+
+            const icon = document.createElement('span');
+            icon.className = 'group-item-icon';
+            icon.textContent = group.icon || '📁';
+
+            const name = document.createElement('span');
+            name.className = 'group-item-name';
+            name.textContent = group.name;
+
+            content.appendChild(icon);
+            content.appendChild(name);
+
+            // 如果是置顶分组，添加图钉图标
+            if (isPinned) {
+                const pinIcon = document.createElement('span');
+                pinIcon.className = 'group-item-pinned';
+                pinIcon.innerHTML = '📌';
+                pinIcon.title = '已置顶';
+                name.appendChild(pinIcon);
+            }
+            groupItem.appendChild(content);
+
+            const menuBtn = document.createElement('button');
+            menuBtn.className = 'group-item-menu';
+            menuBtn.innerHTML = '⋯';
+            menuBtn.onclick = (e) => {
+                e.stopPropagation();
+                showGroupContextMenu(e, group.id);
+            };
+            groupItem.appendChild(menuBtn);
+
+            groupItem.onclick = () => {
+                enterGroupDetail(group.id);
+            };
+
+            groupsList.appendChild(groupItem);
+        });
+    } catch (error) {
+        console.error('加载分组列表失败:', error);
+    }
+}
+
+// 加载对话列表（修改为支持分组和置顶）
+async function loadConversationsWithGroups(searchQuery = '') {
+    try {
+        // 先加载分组列表（如果还没有加载）
+        if (groupsCache.length === 0) {
+            await loadGroups();
+        }
+        // 先加载分组映射（如果还没有加载）
+        if (Object.keys(conversationGroupMappingCache).length === 0) {
+            await loadConversationGroupMapping();
+        }
+
+        // 如果有搜索关键词，使用更大的limit以获取所有匹配结果
+        const limit = (searchQuery && searchQuery.trim()) ? 1000 : 100;
+        let url = `/api/conversations?limit=${limit}`;
+        if (searchQuery && searchQuery.trim()) {
+            url += '&search=' + encodeURIComponent(searchQuery.trim());
+        }
+        const response = await apiFetch(url);
+        const conversations = await response.json();
+
+        const listContainer = document.getElementById('conversations-list');
+        if (!listContainer) {
+            return;
+        }
+
+        const emptyStateHtml = '<div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.875rem;">暂无历史对话</div>';
+        listContainer.innerHTML = '';
+
+        if (!Array.isArray(conversations) || conversations.length === 0) {
+            listContainer.innerHTML = emptyStateHtml;
+            return;
+        }
+        
+        // 分离置顶和普通对话
+        const pinnedConvs = [];
+        const normalConvs = [];
+        const hasSearchQuery = searchQuery && searchQuery.trim();
+
+        conversations.forEach(conv => {
+            // 如果有搜索关键词，显示所有匹配的对话（全局搜索，包括分组中的）
+            if (hasSearchQuery) {
+                // 搜索时显示所有匹配的对话，不管是否在分组中
+                if (conv.pinned) {
+                    pinnedConvs.push(conv);
+                } else {
+                    normalConvs.push(conv);
+                }
+                return;
+            }
+
+            // 如果没有搜索关键词，使用原有逻辑
+            // 如果对话在某个分组中，且当前不在分组详情页，则跳过
+            if (currentGroupId === null && conversationGroupMappingCache[conv.id]) {
+                return;
+            }
+            
+            // 如果当前在分组详情页，只显示该分组的对话
+            if (currentGroupId !== null && conversationGroupMappingCache[conv.id] !== currentGroupId) {
+                return;
+            }
+
+            if (conv.pinned) {
+                pinnedConvs.push(conv);
+            } else {
+                normalConvs.push(conv);
+            }
+        });
+
+        // 按时间排序
+        const sortByTime = (a, b) => {
+            const timeA = a.updatedAt ? new Date(a.updatedAt) : new Date(0);
+            const timeB = b.updatedAt ? new Date(b.updatedAt) : new Date(0);
+            return timeB - timeA;
+        };
+
+        pinnedConvs.sort(sortByTime);
+        normalConvs.sort(sortByTime);
+
+        const fragment = document.createDocumentFragment();
+
+        // 添加置顶对话
+        if (pinnedConvs.length > 0) {
+            pinnedConvs.forEach(conv => {
+                fragment.appendChild(createConversationListItemWithMenu(conv, true));
+            });
+        }
+
+        // 添加普通对话
+        normalConvs.forEach(conv => {
+            fragment.appendChild(createConversationListItemWithMenu(conv, false));
+        });
+
+        if (fragment.children.length === 0) {
+            listContainer.innerHTML = emptyStateHtml;
+            return;
+        }
+
+        listContainer.appendChild(fragment);
+        updateActiveConversation();
+    } catch (error) {
+        console.error('加载对话列表失败:', error);
+    }
+}
+
+// 创建带菜单的对话项
+function createConversationListItemWithMenu(conversation, isPinned) {
+    const item = document.createElement('div');
+    item.className = 'conversation-item';
+    item.dataset.conversationId = conversation.id;
+    if (conversation.id === currentConversationId) {
+        item.classList.add('active');
+    }
+
+    const contentWrapper = document.createElement('div');
+    contentWrapper.className = 'conversation-content';
+
+    const titleWrapper = document.createElement('div');
+    titleWrapper.style.display = 'flex';
+    titleWrapper.style.alignItems = 'center';
+    titleWrapper.style.gap = '4px';
+
+    const title = document.createElement('div');
+    title.className = 'conversation-title';
+    title.textContent = conversation.title || '未命名对话';
+    titleWrapper.appendChild(title);
+
+    if (isPinned) {
+        const pinIcon = document.createElement('span');
+        pinIcon.className = 'conversation-item-pinned';
+        pinIcon.innerHTML = '📌';
+        pinIcon.title = '已置顶';
+        titleWrapper.appendChild(pinIcon);
+    }
+
+    contentWrapper.appendChild(titleWrapper);
+
+    const time = document.createElement('div');
+    time.className = 'conversation-time';
+    const dateObj = conversation.updatedAt ? new Date(conversation.updatedAt) : new Date();
+    time.textContent = formatConversationTimestamp(dateObj);
+    contentWrapper.appendChild(time);
+
+    // 如果对话属于某个分组，显示分组标签
+    const groupId = conversationGroupMappingCache[conversation.id];
+    if (groupId) {
+        const group = groupsCache.find(g => g.id === groupId);
+        if (group) {
+            const groupTag = document.createElement('div');
+            groupTag.className = 'conversation-group-tag';
+            groupTag.innerHTML = `<span class="group-tag-icon">${group.icon || '📁'}</span><span class="group-tag-name">${group.name}</span>`;
+            groupTag.title = `分组: ${group.name}`;
+            contentWrapper.appendChild(groupTag);
+        }
+    }
+
+    item.appendChild(contentWrapper);
+
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'conversation-item-menu';
+    menuBtn.innerHTML = '⋯';
+    menuBtn.onclick = (e) => {
+        e.stopPropagation();
+        contextMenuConversationId = conversation.id;
+        showConversationContextMenu(e);
+    };
+    item.appendChild(menuBtn);
+
+    item.onclick = () => {
+        if (currentGroupId) {
+            exitGroupDetail();
+        }
+        loadConversation(conversation.id);
+    };
+
+    return item;
+}
+
+// 显示对话上下文菜单
+function showConversationContextMenu(event) {
+    const menu = document.getElementById('conversation-context-menu');
+    if (!menu) return;
+
+    // 先显示菜单以获取尺寸
+    menu.style.display = 'block';
+    menu.style.visibility = 'visible';
+    menu.style.opacity = '1';
+    
+    // 强制重排以获取正确尺寸
+    void menu.offsetHeight;
+    
+    // 计算菜单位置，确保不超出屏幕
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    let left = event.clientX;
+    let top = event.clientY;
+    
+    // 如果菜单会超出右边界，调整到左侧
+    if (left + menuRect.width > viewportWidth) {
+        left = event.clientX - menuRect.width;
+    }
+    
+    // 如果菜单会超出下边界，调整到上方
+    if (top + menuRect.height > viewportHeight) {
+        top = event.clientY - menuRect.height;
+    }
+    
+    // 确保不超出左边界
+    if (left < 0) {
+        left = 8;
+    }
+    
+    // 确保不超出上边界
+    if (top < 0) {
+        top = 8;
+    }
+    
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // 点击外部关闭菜单
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.style.display = 'none';
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('click', closeMenu);
+    }, 0);
+}
+
+// 显示分组上下文菜单
+function showGroupContextMenu(event, groupId) {
+    const menu = document.getElementById('group-context-menu');
+    if (!menu) return;
+
+    contextMenuGroupId = groupId;
+
+    // 先显示菜单以获取尺寸
+    menu.style.display = 'block';
+    menu.style.visibility = 'visible';
+    menu.style.opacity = '1';
+    
+    // 强制重排以获取正确尺寸
+    void menu.offsetHeight;
+    
+    // 计算菜单位置，确保不超出屏幕
+    const menuRect = menu.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    let left = event.clientX;
+    let top = event.clientY;
+    
+    // 如果菜单会超出右边界，调整到左侧
+    if (left + menuRect.width > viewportWidth) {
+        left = event.clientX - menuRect.width;
+    }
+    
+    // 如果菜单会超出下边界，调整到上方
+    if (top + menuRect.height > viewportHeight) {
+        top = event.clientY - menuRect.height;
+    }
+    
+    // 确保不超出左边界
+    if (left < 0) {
+        left = 8;
+    }
+    
+    // 确保不超出上边界
+    if (top < 0) {
+        top = 8;
+    }
+    
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+
+    // 点击外部关闭菜单
+    const closeMenu = (e) => {
+        if (!menu.contains(e.target)) {
+            menu.style.display = 'none';
+            document.removeEventListener('click', closeMenu);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('click', closeMenu);
+    }, 0);
+}
+
+// 重命名对话
+async function renameConversation() {
+    const convId = contextMenuConversationId;
+    if (!convId) return;
+
+    const newTitle = prompt('请输入新标题:', '');
+    if (newTitle === null || !newTitle.trim()) {
+        closeContextMenu();
+        return;
+    }
+
+    try {
+        const response = await apiFetch(`/api/conversations/${convId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title: newTitle.trim() }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || '更新失败');
+        }
+
+        // 更新前端显示
+        const item = document.querySelector(`[data-conversation-id="${convId}"]`);
+        if (item) {
+            const titleEl = item.querySelector('.conversation-title');
+            if (titleEl) {
+                titleEl.textContent = newTitle.trim();
+            }
+        }
+
+        // 如果在分组详情页，也需要更新
+        const groupItem = document.querySelector(`.group-conversation-item[data-conversation-id="${convId}"]`);
+        if (groupItem) {
+            const groupTitleEl = groupItem.querySelector('.group-conversation-title');
+            if (groupTitleEl) {
+                groupTitleEl.textContent = newTitle.trim();
+            }
+        }
+
+        // 重新加载对话列表
+        loadConversationsWithGroups();
+    } catch (error) {
+        console.error('重命名对话失败:', error);
+        alert('重命名失败: ' + (error.message || '未知错误'));
+    }
+
+    closeContextMenu();
+}
+
+// 置顶对话
+async function pinConversation() {
+    const convId = contextMenuConversationId;
+    if (!convId) return;
+
+    try {
+        // 获取当前对话的置顶状态
+        const response = await apiFetch(`/api/conversations/${convId}`);
+        const conv = await response.json();
+        const newPinned = !conv.pinned;
+
+        // 更新置顶状态
+        await apiFetch(`/api/conversations/${convId}/pinned`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ pinned: newPinned }),
+        });
+
+        loadConversationsWithGroups();
+    } catch (error) {
+        console.error('置顶对话失败:', error);
+        alert('置顶失败: ' + (error.message || '未知错误'));
+    }
+
+    closeContextMenu();
+}
+
+// 显示移动到分组子菜单
+async function showMoveToGroupSubmenu() {
+    const submenu = document.getElementById('move-to-group-submenu');
+    if (!submenu) return;
+
+    submenu.innerHTML = '';
+
+    // 确保分组列表已加载
+    if (groupsCache.length === 0) {
+        await loadGroups();
+    }
+
+    // 如果有分组，显示所有分组
+    if (groupsCache.length > 0) {
+        groupsCache.forEach(group => {
+            const item = document.createElement('div');
+            item.className = 'context-submenu-item';
+            item.textContent = group.name;
+            item.onclick = () => {
+                moveConversationToGroup(contextMenuConversationId, group.id);
+            };
+            submenu.appendChild(item);
+        });
+    }
+
+    // 始终显示"创建分组"选项
+    const addItem = document.createElement('div');
+    addItem.className = 'context-submenu-item add-group-item';
+    addItem.textContent = '+ 创建分组';
+    addItem.onclick = () => {
+        showCreateGroupModal(true);
+    };
+    submenu.appendChild(addItem);
+
+    submenu.style.display = 'block';
+}
+
+// 移动对话到分组
+async function moveConversationToGroup(convId, groupId) {
+    try {
+        await apiFetch('/api/groups/conversations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                conversationId: convId,
+                groupId: groupId,
+            }),
+        });
+
+        // 更新缓存
+        conversationGroupMappingCache[convId] = groupId;
+        loadConversationsWithGroups();
+    } catch (error) {
+        console.error('移动对话到分组失败:', error);
+        alert('移动失败: ' + (error.message || '未知错误'));
+    }
+
+    closeContextMenu();
+}
+
+// 加载对话分组映射
+async function loadConversationGroupMapping() {
+    try {
+        // 获取所有分组，然后获取每个分组的对话
+        const groups = groupsCache.length > 0 ? groupsCache : await (await apiFetch('/api/groups')).json();
+        conversationGroupMappingCache = {};
+
+        for (const group of groups) {
+            const response = await apiFetch(`/api/groups/${group.id}/conversations`);
+            const conversations = await response.json();
+            conversations.forEach(conv => {
+                conversationGroupMappingCache[conv.id] = group.id;
+            });
+        }
+    } catch (error) {
+        console.error('加载对话分组映射失败:', error);
+    }
+}
+
+// 从上下文菜单删除对话
+function deleteConversationFromContext() {
+    const convId = contextMenuConversationId;
+    if (!convId) return;
+
+    if (confirm('确定要删除此对话吗？')) {
+        deleteConversation(convId);
+    }
+    closeContextMenu();
+}
+
+// 关闭上下文菜单
+function closeContextMenu() {
+    const menu = document.getElementById('conversation-context-menu');
+    if (menu) {
+        menu.style.display = 'none';
+    }
+    const submenu = document.getElementById('move-to-group-submenu');
+    if (submenu) {
+        submenu.style.display = 'none';
+    }
+    contextMenuConversationId = null;
+}
+
+// 显示批量管理模态框
+let allConversationsForBatch = [];
+
+async function showBatchManageModal() {
+    try {
+        const response = await apiFetch('/api/conversations?limit=1000');
+        allConversationsForBatch = await response.json();
+
+        const modal = document.getElementById('batch-manage-modal');
+        const countEl = document.getElementById('batch-manage-count');
+        if (countEl) {
+            countEl.textContent = allConversationsForBatch.length;
+        }
+
+        renderBatchConversations();
+        if (modal) {
+            modal.style.display = 'flex';
+        }
+    } catch (error) {
+        console.error('加载对话列表失败:', error);
+        alert('加载对话列表失败');
+    }
+}
+
+// 渲染批量管理对话列表
+function renderBatchConversations(filtered = null) {
+    const list = document.getElementById('batch-conversations-list');
+    if (!list) return;
+
+    const conversations = filtered || allConversationsForBatch;
+    list.innerHTML = '';
+
+    conversations.forEach(conv => {
+        const row = document.createElement('div');
+        row.className = 'batch-conversation-row';
+        row.dataset.conversationId = conv.id;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'batch-conversation-checkbox';
+        checkbox.dataset.conversationId = conv.id;
+
+        const name = document.createElement('div');
+        name.className = 'batch-table-col-name';
+        name.textContent = conv.title || '未命名对话';
+
+        const time = document.createElement('div');
+        time.className = 'batch-table-col-time';
+        const dateObj = conv.updatedAt ? new Date(conv.updatedAt) : new Date();
+        time.textContent = dateObj.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        const action = document.createElement('div');
+        action.className = 'batch-table-col-action';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'batch-delete-btn';
+        deleteBtn.innerHTML = '🗑️';
+        deleteBtn.onclick = () => deleteConversation(conv.id);
+        action.appendChild(deleteBtn);
+
+        row.appendChild(checkbox);
+        row.appendChild(name);
+        row.appendChild(time);
+        row.appendChild(action);
+
+        list.appendChild(row);
+    });
+}
+
+// 筛选批量管理对话
+function filterBatchConversations(query) {
+    if (!query || !query.trim()) {
+        renderBatchConversations();
+        return;
+    }
+
+    const filtered = allConversationsForBatch.filter(conv => {
+        const title = (conv.title || '').toLowerCase();
+        return title.includes(query.toLowerCase());
+    });
+
+    renderBatchConversations(filtered);
+}
+
+// 全选/取消全选
+function toggleSelectAllBatch() {
+    const selectAll = document.getElementById('batch-select-all');
+    const checkboxes = document.querySelectorAll('.batch-conversation-checkbox');
+    
+    checkboxes.forEach(cb => {
+        cb.checked = selectAll.checked;
+    });
+}
+
+// 删除选中的对话
+async function deleteSelectedConversations() {
+    const checkboxes = document.querySelectorAll('.batch-conversation-checkbox:checked');
+    if (checkboxes.length === 0) {
+        alert('请先选择要删除的对话');
+        return;
+    }
+
+    if (!confirm(`确定要删除选中的 ${checkboxes.length} 条对话吗？`)) {
+        return;
+    }
+
+    const ids = Array.from(checkboxes).map(cb => cb.dataset.conversationId);
+    
+    try {
+        for (const id of ids) {
+            await deleteConversation(id);
+        }
+        closeBatchManageModal();
+        loadConversationsWithGroups();
+    } catch (error) {
+        console.error('删除失败:', error);
+        alert('删除失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 关闭批量管理模态框
+function closeBatchManageModal() {
+    const modal = document.getElementById('batch-manage-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    const selectAll = document.getElementById('batch-select-all');
+    if (selectAll) {
+        selectAll.checked = false;
+    }
+    allConversationsForBatch = [];
+}
+
+// 显示创建分组模态框
+function showCreateGroupModal(andMoveConversation = false) {
+    const modal = document.getElementById('create-group-modal');
+    const input = document.getElementById('create-group-name-input');
+    if (input) {
+        input.value = '';
+    }
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.dataset.moveConversation = andMoveConversation ? 'true' : 'false';
+        if (input) {
+            setTimeout(() => input.focus(), 100);
+        }
+    }
+}
+
+// 关闭创建分组模态框
+function closeCreateGroupModal() {
+    const modal = document.getElementById('create-group-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    const input = document.getElementById('create-group-name-input');
+    if (input) {
+        input.value = '';
+    }
+}
+
+// 创建分组
+async function createGroup(event) {
+    // 阻止事件冒泡
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
+    const input = document.getElementById('create-group-name-input');
+    if (!input) {
+        console.error('找不到输入框');
+        return;
+    }
+
+    const name = input.value.trim();
+    if (!name) {
+        alert('请输入分组名称');
+        return;
+    }
+
+    // 前端校验：检查名称是否已存在
+    try {
+        const groups = groupsCache.length > 0 ? groupsCache : await (await apiFetch('/api/groups')).json();
+        const nameExists = groups.some(g => g.name === name);
+        if (nameExists) {
+            alert('分组名称已存在，请使用其他名称');
+            return;
+        }
+    } catch (error) {
+        console.error('检查分组名称失败:', error);
+    }
+
+    try {
+        const response = await apiFetch('/api/groups', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                name: name,
+                icon: '📁',
+            }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            if (error.error && error.error.includes('已存在')) {
+                alert('分组名称已存在，请使用其他名称');
+                return;
+            }
+            throw new Error(error.error || '创建失败');
+        }
+
+        const newGroup = await response.json();
+        await loadGroups();
+
+        const modal = document.getElementById('create-group-modal');
+        const shouldMove = modal && modal.dataset.moveConversation === 'true';
+        
+        closeCreateGroupModal();
+
+        if (shouldMove && contextMenuConversationId) {
+            moveConversationToGroup(contextMenuConversationId, newGroup.id);
+        }
+    } catch (error) {
+        console.error('创建分组失败:', error);
+        alert('创建失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 进入分组详情
+async function enterGroupDetail(groupId) {
+    currentGroupId = groupId;
+    
+    try {
+        const response = await apiFetch(`/api/groups/${groupId}`);
+        const group = await response.json();
+        
+        if (!group) {
+            currentGroupId = null;
+            return;
+        }
+
+        // 隐藏侧边栏，显示分组详情页
+        const sidebar = document.querySelector('.conversation-sidebar');
+        const groupDetailPage = document.getElementById('group-detail-page');
+        const titleEl = document.getElementById('group-detail-title');
+
+        if (sidebar) sidebar.style.display = 'none';
+        if (groupDetailPage) groupDetailPage.style.display = 'flex';
+        if (titleEl) titleEl.textContent = group.name;
+
+        loadGroupConversations(groupId);
+    } catch (error) {
+        console.error('加载分组失败:', error);
+        currentGroupId = null;
+    }
+}
+
+// 退出分组详情
+function exitGroupDetail() {
+    currentGroupId = null;
+    const sidebar = document.querySelector('.conversation-sidebar');
+    const groupDetailPage = document.getElementById('group-detail-page');
+
+    if (sidebar) sidebar.style.display = 'flex';
+    if (groupDetailPage) groupDetailPage.style.display = 'none';
+
+    loadConversationsWithGroups();
+}
+
+// 加载分组中的对话
+async function loadGroupConversations(groupId) {
+    try {
+        const response = await apiFetch(`/api/groups/${groupId}/conversations`);
+        const groupConvs = await response.json();
+
+        const list = document.getElementById('group-conversations-list');
+        if (!list) return;
+
+        list.innerHTML = '';
+
+        if (!Array.isArray(groupConvs) || groupConvs.length === 0) {
+            list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">该分组暂无对话</div>';
+            return;
+        }
+
+        // 加载每个对话的详细信息以获取消息
+        for (const conv of groupConvs) {
+            try {
+                const convResponse = await apiFetch(`/api/conversations/${conv.id}`);
+                const fullConv = await convResponse.json();
+                
+                const item = document.createElement('div');
+                item.className = 'group-conversation-item';
+                item.onclick = () => {
+                    exitGroupDetail();
+                    loadConversation(conv.id);
+                };
+
+                const title = document.createElement('div');
+                title.className = 'group-conversation-title';
+                title.textContent = fullConv.title || conv.title || '未命名对话';
+
+                const timeWrapper = document.createElement('div');
+                timeWrapper.className = 'group-conversation-time';
+                const dateObj = fullConv.updatedAt ? new Date(fullConv.updatedAt) : new Date();
+                timeWrapper.textContent = dateObj.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                item.appendChild(title);
+                item.appendChild(timeWrapper);
+
+                // 如果有第一条消息，显示内容预览
+                if (fullConv.messages && fullConv.messages.length > 0) {
+                    const firstMsg = fullConv.messages.find(m => m.role === 'user' && m.content);
+                    if (firstMsg && firstMsg.content) {
+                        const content = document.createElement('div');
+                        content.className = 'group-conversation-content';
+                        let preview = firstMsg.content.substring(0, 200);
+                        if (firstMsg.content.length > 200) {
+                            preview += '...';
+                        }
+                        content.textContent = preview;
+                        item.appendChild(content);
+                    }
+                }
+
+                list.appendChild(item);
+            } catch (err) {
+                console.error(`加载对话 ${conv.id} 失败:`, err);
+            }
+        }
+    } catch (error) {
+        console.error('加载分组对话失败:', error);
+    }
+}
+
+// 编辑分组
+async function editGroup() {
+    if (!currentGroupId) return;
+
+    try {
+        const response = await apiFetch(`/api/groups/${currentGroupId}`);
+        const group = await response.json();
+        if (!group) return;
+
+        const newName = prompt('请输入新名称:', group.name);
+        if (newName === null || !newName.trim()) return;
+
+        const trimmedName = newName.trim();
+        
+        // 前端校验：检查名称是否已存在（排除当前分组）
+        const groups = groupsCache.length > 0 ? groupsCache : await (await apiFetch('/api/groups')).json();
+        const nameExists = groups.some(g => g.name === trimmedName && g.id !== currentGroupId);
+        if (nameExists) {
+            alert('分组名称已存在，请使用其他名称');
+            return;
+        }
+
+        const updateResponse = await apiFetch(`/api/groups/${currentGroupId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                name: trimmedName,
+                icon: group.icon || '📁',
+            }),
+        });
+
+        if (!updateResponse.ok) {
+            const error = await updateResponse.json();
+            if (error.error && error.error.includes('已存在')) {
+                alert('分组名称已存在，请使用其他名称');
+                return;
+            }
+            throw new Error(error.error || '更新失败');
+        }
+
+        loadGroups();
+        
+        const titleEl = document.getElementById('group-detail-title');
+        if (titleEl) {
+            titleEl.textContent = trimmedName;
+        }
+    } catch (error) {
+        console.error('编辑分组失败:', error);
+        alert('编辑失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 删除分组
+async function deleteGroup() {
+    if (!currentGroupId) return;
+
+    if (!confirm('确定要删除此分组吗？分组中的对话不会被删除，但会从分组中移除。')) {
+        return;
+    }
+
+    try {
+        await apiFetch(`/api/groups/${currentGroupId}`, {
+            method: 'DELETE',
+        });
+
+        // 更新缓存
+        groupsCache = groupsCache.filter(g => g.id !== currentGroupId);
+        Object.keys(conversationGroupMappingCache).forEach(convId => {
+            if (conversationGroupMappingCache[convId] === currentGroupId) {
+                delete conversationGroupMappingCache[convId];
+            }
+        });
+
+        exitGroupDetail();
+        loadGroups();
+    } catch (error) {
+        console.error('删除分组失败:', error);
+        alert('删除失败: ' + (error.message || '未知错误'));
+    }
+}
+
+// 从上下文菜单重命名分组
+async function renameGroupFromContext() {
+    const groupId = contextMenuGroupId;
+    if (!groupId) return;
+
+    try {
+        const response = await apiFetch(`/api/groups/${groupId}`);
+        const group = await response.json();
+        if (!group) return;
+
+        const newName = prompt('请输入新名称:', group.name);
+        if (newName === null || !newName.trim()) {
+            closeGroupContextMenu();
+            return;
+        }
+
+        const trimmedName = newName.trim();
+        
+        // 前端校验：检查名称是否已存在（排除当前分组）
+        const groups = groupsCache.length > 0 ? groupsCache : await (await apiFetch('/api/groups')).json();
+        const nameExists = groups.some(g => g.name === trimmedName && g.id !== groupId);
+        if (nameExists) {
+            alert('分组名称已存在，请使用其他名称');
+            return;
+        }
+
+        const updateResponse = await apiFetch(`/api/groups/${groupId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                name: trimmedName,
+                icon: group.icon || '📁',
+            }),
+        });
+
+        if (!updateResponse.ok) {
+            const error = await updateResponse.json();
+            if (error.error && error.error.includes('已存在')) {
+                alert('分组名称已存在，请使用其他名称');
+                return;
+            }
+            throw new Error(error.error || '更新失败');
+        }
+
+        loadGroups();
+        
+        // 如果当前在分组详情页，更新标题
+        if (currentGroupId === groupId) {
+            const titleEl = document.getElementById('group-detail-title');
+            if (titleEl) {
+                titleEl.textContent = trimmedName;
+            }
+        }
+    } catch (error) {
+        console.error('重命名分组失败:', error);
+        alert('重命名失败: ' + (error.message || '未知错误'));
+    }
+
+    closeGroupContextMenu();
+}
+
+// 从上下文菜单置顶分组
+async function pinGroupFromContext() {
+    const groupId = contextMenuGroupId;
+    if (!groupId) return;
+
+    try {
+        // 获取当前分组信息
+        const response = await apiFetch(`/api/groups/${groupId}`);
+        const group = await response.json();
+        if (!group) return;
+
+        const newPinnedState = !group.pinned;
+
+        // 调用 API 更新置顶状态
+        const updateResponse = await apiFetch(`/api/groups/${groupId}/pinned`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                pinned: newPinnedState,
+            }),
+        });
+
+        if (!updateResponse.ok) {
+            const error = await updateResponse.json();
+            throw new Error(error.error || '更新失败');
+        }
+
+        // 重新加载分组列表以更新显示顺序
+        loadGroups();
+    } catch (error) {
+        console.error('置顶分组失败:', error);
+        alert('置顶失败: ' + (error.message || '未知错误'));
+    }
+
+    closeGroupContextMenu();
+}
+
+// 从上下文菜单删除分组
+async function deleteGroupFromContext() {
+    const groupId = contextMenuGroupId;
+    if (!groupId) return;
+
+    if (!confirm('确定要删除此分组吗？分组中的对话不会被删除，但会从分组中移除。')) {
+        closeGroupContextMenu();
+        return;
+    }
+
+    try {
+        await apiFetch(`/api/groups/${groupId}`, {
+            method: 'DELETE',
+        });
+
+        // 更新缓存
+        groupsCache = groupsCache.filter(g => g.id !== groupId);
+        Object.keys(conversationGroupMappingCache).forEach(convId => {
+            if (conversationGroupMappingCache[convId] === groupId) {
+                delete conversationGroupMappingCache[convId];
+            }
+        });
+
+        // 如果当前在分组详情页，退出详情页
+        if (currentGroupId === groupId) {
+            exitGroupDetail();
+        }
+
+        loadGroups();
+    } catch (error) {
+        console.error('删除分组失败:', error);
+        alert('删除失败: ' + (error.message || '未知错误'));
+    }
+
+    closeGroupContextMenu();
+}
+
+// 关闭分组上下文菜单
+function closeGroupContextMenu() {
+    const menu = document.getElementById('group-context-menu');
+    if (menu) {
+        menu.style.display = 'none';
+    }
+    contextMenuGroupId = null;
+}
+
+
+// 在分组中搜索（占位函数）
+function searchInGroup() {
+    alert('搜索功能待实现');
+}
+
+// 初始化时加载分组
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadGroups();
+    // 替换原来的loadConversations调用
+    if (typeof loadConversations === 'function') {
+        // 保留原函数，但使用新函数
+        const originalLoad = loadConversations;
+        loadConversations = function(...args) {
+            loadConversationsWithGroups(...args);
+        };
+    }
+    await loadConversationsWithGroups();
+});

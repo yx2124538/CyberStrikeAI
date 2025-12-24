@@ -141,8 +141,8 @@
                                 </button>
                             </div>
                             <div class="sidebar-content">
-                                <div class="sidebar-title">历史对话</div>
-                                <div class="conversation-search-box">
+                                <!-- 全局搜索 -->
+                                <div class="conversation-search-box" style="margin-bottom: 16px;">
                                     <input type="text" id="conversation-search-input" placeholder="搜索历史记录..." 
                                            oninput="handleConversationSearch(this.value)" 
                                            onkeypress="if(event.key === 'Enter') handleConversationSearch(this.value)" />
@@ -154,9 +154,73 @@
                                         </svg>
                                     </button>
                                 </div>
-                                <div id="conversations-list" class="conversations-list"></div>
+                                
+                                <!-- 对话分组 -->
+                                <div class="conversation-groups-section">
+                                    <div class="section-header">
+                                        <span class="section-title">对话分组</span>
+                                        <button class="add-group-btn" onclick="showCreateGroupModal()" title="新建分组">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div id="conversation-groups-list" class="conversation-groups-list"></div>
+                                </div>
+                                
+                                <!-- 最近对话 -->
+                                <div class="recent-conversations-section">
+                                    <div class="section-header">
+                                        <span class="section-title">最近对话</span>
+                                        <button class="batch-manage-btn" onclick="showBatchManageModal()" title="批量管理">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                <line x1="3" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                                <circle cx="8" cy="6" r="1" fill="currentColor"/>
+                                                <circle cx="8" cy="12" r="1" fill="currentColor"/>
+                                                <circle cx="8" cy="18" r="1" fill="currentColor"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div id="conversations-list" class="conversations-list"></div>
+                                </div>
                             </div>
                         </aside>
+                        
+                        <!-- 分组详情页面 -->
+                        <div id="group-detail-page" class="group-detail-page" style="display: none;">
+                            <div class="group-detail-header">
+                                <button class="back-btn" onclick="exitGroupDetail()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                                <h2 id="group-detail-title" class="group-detail-title"></h2>
+                                <div class="group-detail-actions">
+                                    <button class="group-action-btn" onclick="searchInGroup()" title="搜索">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                                            <path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
+                                    </button>
+                                    <button class="group-action-btn" onclick="editGroup()" title="编辑">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+                                    <button class="group-action-btn delete-btn" onclick="deleteGroup()" title="删除">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="group-detail-content">
+                                <div id="group-conversations-list" class="group-conversations-list"></div>
+                            </div>
+                        </div>
 
                         <!-- 对话界面 -->
                         <div class="chat-container">
@@ -756,6 +820,135 @@
                 <button class="btn-secondary" onclick="closeKnowledgeItemModal()">取消</button>
                 <button class="btn-primary" onclick="saveKnowledgeItem()">保存</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 批量管理对话模态框 -->
+    <div id="batch-manage-modal" class="modal">
+        <div class="modal-content batch-manage-modal-content">
+            <div class="modal-header">
+                <h2 id="batch-manage-title">管理对话记录·共<span id="batch-manage-count">0</span>条</h2>
+                <div class="batch-manage-header-actions">
+                    <div class="batch-search-box">
+                        <input type="text" id="batch-search-input" placeholder="搜索历史记录" oninput="filterBatchConversations(this.value)" />
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+                            <path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <span class="modal-close" onclick="closeBatchManageModal()">&times;</span>
+                </div>
+            </div>
+            <div class="modal-body batch-manage-body">
+                <div class="batch-conversations-table">
+                    <div class="batch-table-header">
+                        <div class="batch-table-col-checkbox"></div>
+                        <div class="batch-table-col-name">对话名称</div>
+                        <div class="batch-table-col-time">最近一次对话时间</div>
+                        <div class="batch-table-col-action">操作</div>
+                    </div>
+                    <div id="batch-conversations-list" class="batch-conversations-list"></div>
+                </div>
+            </div>
+            <div class="modal-footer batch-manage-footer">
+                <label class="select-all-checkbox">
+                    <input type="checkbox" id="batch-select-all" onchange="toggleSelectAllBatch()" />
+                    <span>全选</span>
+                </label>
+                <div class="batch-footer-actions">
+                    <button class="btn-secondary" onclick="closeBatchManageModal()">取消</button>
+                    <button class="btn-primary" onclick="deleteSelectedConversations()">删除所选</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建分组模态框 -->
+    <div id="create-group-modal" class="modal">
+        <div class="modal-content create-group-modal-content">
+            <div class="modal-header">
+                <h2>创建分组</h2>
+                <span class="modal-close" onclick="closeCreateGroupModal()">&times;</span>
+            </div>
+            <div class="modal-body create-group-body">
+                <p class="create-group-description">分组功能可将对话集中归类管理,并支持自定义指令,让对话更加井然有序。</p>
+                <div class="create-group-input-wrapper">
+                    <span class="group-icon-input">😊</span>
+                    <input type="text" id="create-group-name-input" placeholder="请输入分组名称" />
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeCreateGroupModal()">取消</button>
+                <button class="btn-primary" onclick="createGroup(event)">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 上下文菜单 -->
+    <div id="conversation-context-menu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" onclick="renameConversation()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>重命名</span>
+        </div>
+        <div class="context-menu-item" onclick="pinConversation()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 17v5M5 17h14l-1-7H6l-1 7zM9 10V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>置顶此对话</span>
+        </div>
+        <div class="context-menu-item" onclick="showBatchManageModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="3" y1="6" x2="21" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <line x1="3" y1="18" x2="21" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="8" cy="6" r="1" fill="currentColor"/>
+                <circle cx="8" cy="12" r="1" fill="currentColor"/>
+                <circle cx="8" cy="18" r="1" fill="currentColor"/>
+            </svg>
+            <span>批量管理</span>
+        </div>
+        <div class="context-menu-item context-menu-item-has-submenu" onmouseenter="showMoveToGroupSubmenu()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>移动到分组</span>
+            <svg class="submenu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div id="move-to-group-submenu" class="context-submenu" style="display: none;"></div>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item context-menu-item-danger" onclick="deleteConversationFromContext()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>删除此对话</span>
+        </div>
+    </div>
+
+    <!-- 分组上下文菜单 -->
+    <div id="group-context-menu" class="context-menu" style="display: none;">
+        <div class="context-menu-item" onclick="renameGroupFromContext()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>重命名</span>
+        </div>
+        <div class="context-menu-item" onclick="pinGroupFromContext()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 17v5M5 17h14l-1-7H6l-1 7zM9 10V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>置顶此分组</span>
+        </div>
+        <div class="context-menu-item context-menu-item-danger" onclick="deleteGroupFromContext()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>删除此分组</span>
         </div>
     </div>
 

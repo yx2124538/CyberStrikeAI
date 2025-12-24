@@ -14,6 +14,7 @@ import (
 type Conversation struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
+	Pinned    bool      `json:"pinned"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Messages  []Message `json:"messages,omitempty"`
@@ -55,11 +56,12 @@ func (db *DB) CreateConversation(title string) (*Conversation, error) {
 func (db *DB) GetConversation(id string) (*Conversation, error) {
 	var conv Conversation
 	var createdAt, updatedAt string
+	var pinned int
 
 	err := db.QueryRow(
-		"SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
+		"SELECT id, title, pinned, created_at, updated_at FROM conversations WHERE id = ?",
 		id,
-	).Scan(&conv.ID, &conv.Title, &createdAt, &updatedAt)
+	).Scan(&conv.ID, &conv.Title, &pinned, &createdAt, &updatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("对话不存在")
@@ -84,6 +86,8 @@ func (db *DB) GetConversation(id string) (*Conversation, error) {
 	if err2 != nil {
 		conv.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 	}
+
+	conv.Pinned = pinned != 0
 
 	// 加载消息
 	messages, err := db.GetMessages(id)
@@ -138,7 +142,7 @@ func (db *DB) ListConversations(limit, offset int, search string) ([]*Conversati
 		searchPattern := "%" + search + "%"
 		// 使用DISTINCT避免重复，因为一个对话可能有多条消息匹配
 		rows, err = db.Query(
-			`SELECT DISTINCT c.id, c.title, c.created_at, c.updated_at 
+			`SELECT DISTINCT c.id, c.title, COALESCE(c.pinned, 0), c.created_at, c.updated_at 
 			 FROM conversations c
 			 LEFT JOIN messages m ON c.id = m.conversation_id
 			 WHERE c.title LIKE ? OR m.content LIKE ?
@@ -148,7 +152,7 @@ func (db *DB) ListConversations(limit, offset int, search string) ([]*Conversati
 		)
 	} else {
 		rows, err = db.Query(
-			"SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+			"SELECT id, title, COALESCE(pinned, 0), created_at, updated_at FROM conversations ORDER BY updated_at DESC LIMIT ? OFFSET ?",
 			limit, offset,
 		)
 	}
@@ -162,8 +166,9 @@ func (db *DB) ListConversations(limit, offset int, search string) ([]*Conversati
 	for rows.Next() {
 		var conv Conversation
 		var createdAt, updatedAt string
+		var pinned int
 
-		if err := rows.Scan(&conv.ID, &conv.Title, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&conv.ID, &conv.Title, &pinned, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("扫描对话失败: %w", err)
 		}
 
@@ -184,6 +189,8 @@ func (db *DB) ListConversations(limit, offset int, search string) ([]*Conversati
 		if err2 != nil {
 			conv.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 		}
+
+		conv.Pinned = pinned != 0
 
 		conversations = append(conversations, &conv)
 	}

@@ -222,11 +222,11 @@ func (db *DB) RemoveConversationFromGroup(conversationID, groupID string) error 
 // GetConversationsByGroup 获取分组中的所有对话
 func (db *DB) GetConversationsByGroup(groupID string) ([]*Conversation, error) {
 	rows, err := db.Query(
-		`SELECT c.id, c.title, COALESCE(c.pinned, 0), c.created_at, c.updated_at 
+		`SELECT c.id, c.title, COALESCE(c.pinned, 0), c.created_at, c.updated_at, COALESCE(cgm.pinned, 0) as group_pinned
 		 FROM conversations c
 		 INNER JOIN conversation_group_mappings cgm ON c.id = cgm.conversation_id
 		 WHERE cgm.group_id = ?
-		 ORDER BY c.updated_at DESC`,
+		 ORDER BY COALESCE(cgm.pinned, 0) DESC, c.updated_at DESC`,
 		groupID,
 	)
 	if err != nil {
@@ -239,8 +239,9 @@ func (db *DB) GetConversationsByGroup(groupID string) ([]*Conversation, error) {
 		var conv Conversation
 		var createdAt, updatedAt string
 		var pinned int
+		var groupPinned int
 
-		if err := rows.Scan(&conv.ID, &conv.Title, &pinned, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&conv.ID, &conv.Title, &pinned, &createdAt, &updatedAt, &groupPinned); err != nil {
 			return nil, fmt.Errorf("扫描对话失败: %w", err)
 		}
 
@@ -315,6 +316,22 @@ func (db *DB) UpdateGroupPinned(id string, pinned bool) error {
 	)
 	if err != nil {
 		return fmt.Errorf("更新分组置顶状态失败: %w", err)
+	}
+	return nil
+}
+
+// UpdateConversationPinnedInGroup 更新对话在分组中的置顶状态
+func (db *DB) UpdateConversationPinnedInGroup(conversationID, groupID string, pinned bool) error {
+	pinnedValue := 0
+	if pinned {
+		pinnedValue = 1
+	}
+	_, err := db.Exec(
+		"UPDATE conversation_group_mappings SET pinned = ? WHERE conversation_id = ? AND group_id = ?",
+		pinnedValue, conversationID, groupID,
+	)
+	if err != nil {
+		return fmt.Errorf("更新分组对话置顶状态失败: %w", err)
 	}
 	return nil
 }

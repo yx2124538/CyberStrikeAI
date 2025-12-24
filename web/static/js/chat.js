@@ -1162,13 +1162,24 @@ function copyDetailBlock(elementId, triggerBtn = null) {
 
 // 开始新对话
 function startNewConversation() {
+    // 如果当前在分组详情页面，先退出分组详情
+    if (currentGroupId) {
+        const groupDetailPage = document.getElementById('group-detail-page');
+        const chatContainer = document.querySelector('.chat-container');
+        if (groupDetailPage) groupDetailPage.style.display = 'none';
+        if (chatContainer) chatContainer.style.display = 'flex';
+        currentGroupId = null;
+        // 刷新对话列表
+        loadConversationsWithGroups();
+    }
+    
     currentConversationId = null;
     document.getElementById('chat-messages').innerHTML = '';
     addMessage('assistant', '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。');
     addAttackChainButton(null);
     updateActiveConversation();
     // 刷新对话列表，确保显示最新的历史对话
-    loadConversations();
+    loadConversationsWithGroups();
     // 清除防抖定时器，防止恢复草稿时触发保存
     if (draftSaveTimer) {
         clearTimeout(draftSaveTimer);
@@ -1427,6 +1438,32 @@ async function loadConversation(conversationId) {
             alert('加载对话失败: ' + (conversation.error || '未知错误'));
             return;
         }
+        
+        // 如果当前在分组详情页面，切换到对话界面
+        // 退出分组详情模式，显示所有最近对话，提供更好的用户体验
+        if (currentGroupId) {
+            const sidebar = document.querySelector('.conversation-sidebar');
+            const groupDetailPage = document.getElementById('group-detail-page');
+            const chatContainer = document.querySelector('.chat-container');
+            
+            // 确保侧边栏始终可见
+            if (sidebar) sidebar.style.display = 'flex';
+            // 隐藏分组详情页，显示对话界面
+            if (groupDetailPage) groupDetailPage.style.display = 'none';
+            if (chatContainer) chatContainer.style.display = 'flex';
+            
+            // 退出分组详情模式，这样最近对话列表会显示所有对话
+            // 用户可以在侧边栏看到所有对话，方便切换
+            const previousGroupId = currentGroupId;
+            currentGroupId = null;
+            
+            // 刷新最近对话列表，显示所有对话（包括分组中的）
+            loadConversationsWithGroups();
+        }
+        
+        // 无论是否在分组详情页面，都刷新分组列表，确保高亮状态正确
+        // 这样可以清除之前分组的高亮状态，确保UI状态一致
+        await loadGroups();
         
         // 更新当前对话ID
         currentConversationId = conversationId;
@@ -3869,11 +3906,56 @@ function createConversationListItemWithMenu(conversation, isPinned) {
 }
 
 // 显示对话上下文菜单
-function showConversationContextMenu(event) {
+async function showConversationContextMenu(event) {
     const menu = document.getElementById('conversation-context-menu');
     if (!menu) return;
 
-    // 先显示菜单以获取尺寸
+    const convId = contextMenuConversationId;
+    // 先获取对话的置顶状态并更新菜单文本（在显示菜单之前）
+    if (convId) {
+        try {
+            let isPinned = false;
+            if (currentGroupId) {
+                // 如果在分组详情页面，获取分组内置顶状态
+                const response = await apiFetch(`/api/groups/${currentGroupId}/conversations`);
+                if (response.ok) {
+                    const groupConvs = await response.json();
+                    const conv = groupConvs.find(c => c.id === convId);
+                    if (conv) {
+                        isPinned = conv.groupPinned || false;
+                    }
+                }
+            } else {
+                // 不在分组详情页面，获取全局置顶状态
+                const response = await apiFetch(`/api/conversations/${convId}`);
+                if (response.ok) {
+                    const conv = await response.json();
+                    isPinned = conv.pinned || false;
+                }
+            }
+            
+            // 更新菜单文本
+            const pinMenuText = document.getElementById('pin-conversation-menu-text');
+            if (pinMenuText) {
+                pinMenuText.textContent = isPinned ? '取消置顶' : '置顶此对话';
+            }
+        } catch (error) {
+            console.error('获取对话置顶状态失败:', error);
+            // 如果获取失败，使用默认文本
+            const pinMenuText = document.getElementById('pin-conversation-menu-text');
+            if (pinMenuText) {
+                pinMenuText.textContent = '置顶此对话';
+            }
+        }
+    } else {
+        // 如果没有对话ID，使用默认文本
+        const pinMenuText = document.getElementById('pin-conversation-menu-text');
+        if (pinMenuText) {
+            pinMenuText.textContent = '置顶此对话';
+        }
+    }
+
+    // 在状态获取完成后再显示菜单
     menu.style.display = 'block';
     menu.style.visibility = 'visible';
     menu.style.opacity = '1';
@@ -3886,17 +3968,26 @@ function showConversationContextMenu(event) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     
+    // 获取子菜单的宽度（如果存在）
+    const submenu = document.getElementById('move-to-group-submenu');
+    const submenuWidth = submenu ? 180 : 0; // 子菜单宽度 + 间距
+    
     let left = event.clientX;
     let top = event.clientY;
     
     // 如果菜单会超出右边界，调整到左侧
-    if (left + menuRect.width > viewportWidth) {
+    // 考虑子菜单的宽度
+    if (left + menuRect.width + submenuWidth > viewportWidth) {
         left = event.clientX - menuRect.width;
+        // 如果调整后仍然超出，则放在按钮左侧
+        if (left < 0) {
+            left = Math.max(8, event.clientX - menuRect.width - submenuWidth);
+        }
     }
     
     // 如果菜单会超出下边界，调整到上方
     if (top + menuRect.height > viewportHeight) {
-        top = event.clientY - menuRect.height;
+        top = Math.max(8, event.clientY - menuRect.height);
     }
     
     // 确保不超出左边界
@@ -3911,6 +4002,19 @@ function showConversationContextMenu(event) {
     
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
+    
+    // 如果菜单在右侧，子菜单应该在左侧显示
+    if (submenu && left < event.clientX) {
+        submenu.style.left = 'auto';
+        submenu.style.right = '100%';
+        submenu.style.marginLeft = '0';
+        submenu.style.marginRight = '4px';
+    } else if (submenu) {
+        submenu.style.left = '100%';
+        submenu.style.right = 'auto';
+        submenu.style.marginLeft = '4px';
+        submenu.style.marginRight = '0';
+    }
 
     // 点击外部关闭菜单
     const closeMenu = (e) => {
@@ -3925,13 +4029,44 @@ function showConversationContextMenu(event) {
 }
 
 // 显示分组上下文菜单
-function showGroupContextMenu(event, groupId) {
+async function showGroupContextMenu(event, groupId) {
     const menu = document.getElementById('group-context-menu');
     if (!menu) return;
 
     contextMenuGroupId = groupId;
 
-    // 先显示菜单以获取尺寸
+    // 先获取分组的置顶状态并更新菜单文本（在显示菜单之前）
+    try {
+        // 先从缓存中查找
+        let group = groupsCache.find(g => g.id === groupId);
+        let isPinned = false;
+        
+        if (group) {
+            isPinned = group.pinned || false;
+        } else {
+            // 如果缓存中没有，从API获取
+            const response = await apiFetch(`/api/groups/${groupId}`);
+            if (response.ok) {
+                group = await response.json();
+                isPinned = group.pinned || false;
+            }
+        }
+        
+        // 更新菜单文本
+        const pinMenuText = document.getElementById('pin-group-menu-text');
+        if (pinMenuText) {
+            pinMenuText.textContent = isPinned ? '取消置顶' : '置顶此分组';
+        }
+    } catch (error) {
+        console.error('获取分组置顶状态失败:', error);
+        // 如果获取失败，使用默认文本
+        const pinMenuText = document.getElementById('pin-group-menu-text');
+        if (pinMenuText) {
+            pinMenuText.textContent = '置顶此分组';
+        }
+    }
+
+    // 在状态获取完成后再显示菜单
     menu.style.display = 'block';
     menu.style.visibility = 'visible';
     menu.style.opacity = '1';
@@ -4041,21 +4176,45 @@ async function pinConversation() {
     if (!convId) return;
 
     try {
-        // 获取当前对话的置顶状态
-        const response = await apiFetch(`/api/conversations/${convId}`);
-        const conv = await response.json();
-        const newPinned = !conv.pinned;
+        // 如果当前在分组详情页面，使用分组内置顶
+        if (currentGroupId) {
+            // 获取当前对话在分组中的置顶状态
+            const response = await apiFetch(`/api/groups/${currentGroupId}/conversations`);
+            const groupConvs = await response.json();
+            const conv = groupConvs.find(c => c.id === convId);
+            
+            // 如果找不到对话，说明可能有问题，使用默认值
+            const currentPinned = conv && conv.groupPinned !== undefined ? conv.groupPinned : false;
+            const newPinned = !currentPinned;
 
-        // 更新置顶状态
-        await apiFetch(`/api/conversations/${convId}/pinned`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ pinned: newPinned }),
-        });
+            // 更新分组内置顶状态
+            await apiFetch(`/api/groups/${currentGroupId}/conversations/${convId}/pinned`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ pinned: newPinned }),
+            });
 
-        loadConversationsWithGroups();
+            // 重新加载分组对话
+            loadGroupConversations(currentGroupId);
+        } else {
+            // 不在分组详情页面，使用全局置顶
+            const response = await apiFetch(`/api/conversations/${convId}`);
+            const conv = await response.json();
+            const newPinned = !conv.pinned;
+
+            // 更新全局置顶状态
+            await apiFetch(`/api/conversations/${convId}/pinned`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ pinned: newPinned }),
+            });
+
+            loadConversationsWithGroups();
+        }
     } catch (error) {
         console.error('置顶对话失败:', error);
         alert('置顶失败: ' + (error.message || '未知错误'));
@@ -4071,34 +4230,143 @@ async function showMoveToGroupSubmenu() {
 
     submenu.innerHTML = '';
 
-    // 确保分组列表已加载
-    if (groupsCache.length === 0) {
-        await loadGroups();
+    // 确保分组列表已加载 - 强制重新加载以确保数据是最新的
+    try {
+        // 如果缓存为空，强制加载
+        if (!Array.isArray(groupsCache) || groupsCache.length === 0) {
+            await loadGroups();
+        } else {
+            // 即使缓存不为空，也尝试刷新一次，确保数据是最新的
+            // 但使用静默方式，不显示错误
+            try {
+                const response = await apiFetch('/api/groups');
+                if (response.ok) {
+                    const freshGroups = await response.json();
+                    if (Array.isArray(freshGroups)) {
+                        groupsCache = freshGroups;
+                    }
+                }
+            } catch (err) {
+                // 如果刷新失败，使用缓存的数据
+                console.warn('刷新分组列表失败，使用缓存数据:', err);
+            }
+        }
+        
+        // 再次验证缓存
+        if (!Array.isArray(groupsCache)) {
+            console.warn('groupsCache 不是有效数组，重置为空数组');
+            groupsCache = [];
+            // 如果仍然无效，尝试重新加载
+            if (groupsCache.length === 0) {
+                await loadGroups();
+            }
+        }
+    } catch (error) {
+        console.error('加载分组列表失败:', error);
+        // 即使加载失败，也继续显示菜单，使用现有缓存
     }
 
-    // 如果有分组，显示所有分组
+    // 如果当前在分组详情页面，显示"移出本组"选项
+    if (currentGroupId && contextMenuConversationId) {
+        // 检查对话是否在当前分组中
+        const convInGroup = conversationGroupMappingCache[contextMenuConversationId] === currentGroupId;
+        if (convInGroup) {
+            const removeItem = document.createElement('div');
+            removeItem.className = 'context-submenu-item';
+            removeItem.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9 12l6 6M15 12l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>移出本组</span>
+            `;
+            removeItem.onclick = () => {
+                removeConversationFromGroup(contextMenuConversationId, currentGroupId);
+            };
+            submenu.appendChild(removeItem);
+            
+            // 添加分隔线
+            const divider = document.createElement('div');
+            divider.className = 'context-menu-divider';
+            submenu.appendChild(divider);
+        }
+    }
+
+    // 验证 groupsCache 是否为有效数组
+    if (!Array.isArray(groupsCache)) {
+        console.warn('groupsCache 不是有效数组，重置为空数组');
+        groupsCache = [];
+    }
+
+    // 如果有分组，显示所有分组（排除当前分组）
     if (groupsCache.length > 0) {
         groupsCache.forEach(group => {
+            // 验证分组对象是否有效
+            if (!group || !group.id || !group.name) {
+                console.warn('无效的分组对象:', group);
+                return;
+            }
+            
+            // 如果当前在分组详情页面，不显示当前分组
+            if (currentGroupId && group.id === currentGroupId) {
+                return;
+            }
+            
             const item = document.createElement('div');
             item.className = 'context-submenu-item';
-            item.textContent = group.name;
+            item.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>${group.name}</span>
+            `;
             item.onclick = () => {
                 moveConversationToGroup(contextMenuConversationId, group.id);
             };
             submenu.appendChild(item);
         });
+    } else {
+        // 如果仍然没有分组，记录日志以便调试
+        console.warn('showMoveToGroupSubmenu: groupsCache 为空，无法显示分组列表');
     }
 
     // 始终显示"创建分组"选项
     const addItem = document.createElement('div');
     addItem.className = 'context-submenu-item add-group-item';
-    addItem.textContent = '+ 创建分组';
+    addItem.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>+ 新增分组</span>
+    `;
     addItem.onclick = () => {
         showCreateGroupModal(true);
     };
     submenu.appendChild(addItem);
 
     submenu.style.display = 'block';
+    
+    // 计算子菜单位置，防止溢出
+    setTimeout(() => {
+        const submenuRect = submenu.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // 如果子菜单超出右边界，调整到左侧
+        if (submenuRect.right > viewportWidth) {
+            submenu.style.left = 'auto';
+            submenu.style.right = '100%';
+            submenu.style.marginLeft = '0';
+            submenu.style.marginRight = '4px';
+        }
+        
+        // 如果子菜单超出下边界，调整位置
+        if (submenuRect.bottom > viewportHeight) {
+            const overflow = submenuRect.bottom - viewportHeight;
+            const currentTop = parseInt(submenu.style.top) || 0;
+            submenu.style.top = (currentTop - overflow - 8) + 'px';
+        }
+    }, 0);
 }
 
 // 移动对话到分组
@@ -4116,11 +4384,53 @@ async function moveConversationToGroup(convId, groupId) {
         });
 
         // 更新缓存
+        const oldGroupId = conversationGroupMappingCache[convId];
         conversationGroupMappingCache[convId] = groupId;
-        loadConversationsWithGroups();
+        
+        // 如果当前在分组详情页面，重新加载分组对话
+        if (currentGroupId) {
+            // 如果从当前分组移出，或者移动到当前分组，都需要重新加载
+            if (currentGroupId === oldGroupId || currentGroupId === groupId) {
+                loadGroupConversations(currentGroupId);
+            }
+        } else {
+            loadConversationsWithGroups();
+        }
     } catch (error) {
         console.error('移动对话到分组失败:', error);
         alert('移动失败: ' + (error.message || '未知错误'));
+    }
+
+    closeContextMenu();
+}
+
+// 从分组中移除对话
+async function removeConversationFromGroup(convId, groupId) {
+    try {
+        await apiFetch(`/api/groups/${groupId}/conversations/${convId}`, {
+            method: 'DELETE',
+        });
+
+        // 更新缓存 - 立即删除，确保后续加载时能正确识别
+        delete conversationGroupMappingCache[convId];
+        
+        // 如果当前在分组详情页面，重新加载分组对话
+        if (currentGroupId === groupId) {
+            await loadGroupConversations(groupId);
+        }
+        
+        // 重新加载分组映射，确保缓存是最新的
+        await loadConversationGroupMapping();
+        
+        // 刷新最近对话列表，让移出的对话立即显示
+        // 使用临时变量保存 currentGroupId，然后临时设置为 null，确保显示所有不在分组的对话
+        const savedGroupId = currentGroupId;
+        currentGroupId = null;
+        await loadConversationsWithGroups();
+        currentGroupId = savedGroupId;
+    } catch (error) {
+        console.error('从分组中移除对话失败:', error);
+        alert('移除失败: ' + (error.message || '未知错误'));
     }
 
     closeContextMenu();
@@ -4389,6 +4699,11 @@ async function createGroup(event) {
         }
 
         const newGroup = await response.json();
+        
+        // 检查"移动到分组"子菜单是否打开
+        const submenu = document.getElementById('move-to-group-submenu');
+        const isSubmenuOpen = submenu && submenu.style.display !== 'none';
+
         await loadGroups();
 
         const modal = document.getElementById('create-group-modal');
@@ -4398,6 +4713,11 @@ async function createGroup(event) {
 
         if (shouldMove && contextMenuConversationId) {
             moveConversationToGroup(contextMenuConversationId, newGroup.id);
+        }
+
+        // 如果子菜单是打开的，刷新它，让新创建的分组立即显示
+        if (isSubmenuOpen) {
+            await showMoveToGroupSubmenu();
         }
     } catch (error) {
         console.error('创建分组失败:', error);
@@ -4418,14 +4738,21 @@ async function enterGroupDetail(groupId) {
             return;
         }
 
-        // 隐藏侧边栏，显示分组详情页
+        // 显示分组详情页，隐藏对话界面，但保持侧边栏可见
         const sidebar = document.querySelector('.conversation-sidebar');
         const groupDetailPage = document.getElementById('group-detail-page');
+        const chatContainer = document.querySelector('.chat-container');
         const titleEl = document.getElementById('group-detail-title');
 
-        if (sidebar) sidebar.style.display = 'none';
+        // 保持侧边栏可见
+        if (sidebar) sidebar.style.display = 'flex';
+        // 隐藏对话界面，显示分组详情页
+        if (chatContainer) chatContainer.style.display = 'none';
         if (groupDetailPage) groupDetailPage.style.display = 'flex';
         if (titleEl) titleEl.textContent = group.name;
+
+        // 刷新分组列表，确保当前分组高亮显示
+        await loadGroups();
 
         loadGroupConversations(groupId);
     } catch (error) {
@@ -4439,9 +4766,13 @@ function exitGroupDetail() {
     currentGroupId = null;
     const sidebar = document.querySelector('.conversation-sidebar');
     const groupDetailPage = document.getElementById('group-detail-page');
+    const chatContainer = document.querySelector('.chat-container');
 
+    // 保持侧边栏可见
     if (sidebar) sidebar.style.display = 'flex';
+    // 隐藏分组详情页，显示对话界面
     if (groupDetailPage) groupDetailPage.style.display = 'none';
+    if (chatContainer) chatContainer.style.display = 'flex';
 
     loadConversationsWithGroups();
 }
@@ -4449,15 +4780,67 @@ function exitGroupDetail() {
 // 加载分组中的对话
 async function loadGroupConversations(groupId) {
     try {
-        const response = await apiFetch(`/api/groups/${groupId}/conversations`);
-        const groupConvs = await response.json();
-
+        if (!groupId) {
+            console.error('loadGroupConversations: groupId is null or undefined');
+            return;
+        }
+        
+        // 确保分组映射已加载
+        if (Object.keys(conversationGroupMappingCache).length === 0) {
+            await loadConversationGroupMapping();
+        }
+        
+        // 先清空列表，避免显示旧数据
         const list = document.getElementById('group-conversations-list');
-        if (!list) return;
+        if (!list) {
+            console.error('group-conversations-list element not found');
+            return;
+        }
+        list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">加载中...</div>';
 
+        // 确保使用正确的 groupId
+        const url = `/api/groups/${groupId}/conversations`;
+        const response = await apiFetch(url);
+        if (!response.ok) {
+            console.error(`Failed to load conversations for group ${groupId}:`, response.statusText);
+            list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">加载失败，请重试</div>';
+            return;
+        }
+        
+        let groupConvs = await response.json();
+        
+        // 处理 null 或 undefined 的情况，将其视为空数组
+        if (!groupConvs) {
+            groupConvs = [];
+        }
+        
+        // 验证返回的数据类型
+        if (!Array.isArray(groupConvs)) {
+            console.error(`Invalid response for group ${groupId}:`, groupConvs);
+            list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">数据格式错误</div>';
+            return;
+        }
+        
+        // 更新分组映射缓存（只更新当前分组的对话）
+        // 先清理该分组之前的映射（如果有对话被移出）
+        Object.keys(conversationGroupMappingCache).forEach(convId => {
+            if (conversationGroupMappingCache[convId] === groupId) {
+                // 如果这个对话不在新的列表中，说明已被移出
+                if (!groupConvs.find(c => c.id === convId)) {
+                    delete conversationGroupMappingCache[convId];
+                }
+            }
+        });
+        
+        // 更新当前分组的对话映射
+        groupConvs.forEach(conv => {
+            conversationGroupMappingCache[conv.id] = groupId;
+        });
+
+        // 再次清空列表（清除"加载中"提示）
         list.innerHTML = '';
 
-        if (!Array.isArray(groupConvs) || groupConvs.length === 0) {
+        if (groupConvs.length === 0) {
             list.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">该分组暂无对话</div>';
             return;
         }
@@ -4465,19 +4848,55 @@ async function loadGroupConversations(groupId) {
         // 加载每个对话的详细信息以获取消息
         for (const conv of groupConvs) {
             try {
+                // 验证对话ID存在
+                if (!conv.id) {
+                    console.warn('Conversation missing id:', conv);
+                    continue;
+                }
+                
                 const convResponse = await apiFetch(`/api/conversations/${conv.id}`);
+                if (!convResponse.ok) {
+                    console.error(`Failed to load conversation ${conv.id}:`, convResponse.statusText);
+                    continue;
+                }
+                
                 const fullConv = await convResponse.json();
                 
                 const item = document.createElement('div');
                 item.className = 'group-conversation-item';
-                item.onclick = () => {
-                    exitGroupDetail();
-                    loadConversation(conv.id);
-                };
+                item.dataset.conversationId = conv.id;
+                // 只有在分组详情页面且对话ID匹配时才显示active状态
+                // 如果不在分组详情页面，不应该显示active状态
+                if (currentGroupId && conv.id === currentConversationId) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+
+                // 创建内容包装器
+                const contentWrapper = document.createElement('div');
+                contentWrapper.className = 'group-conversation-content-wrapper';
+
+                const titleWrapper = document.createElement('div');
+                titleWrapper.style.display = 'flex';
+                titleWrapper.style.alignItems = 'center';
+                titleWrapper.style.gap = '4px';
 
                 const title = document.createElement('div');
                 title.className = 'group-conversation-title';
                 title.textContent = fullConv.title || conv.title || '未命名对话';
+                titleWrapper.appendChild(title);
+
+                // 如果对话在分组中置顶，显示置顶图标
+                if (conv.groupPinned) {
+                    const pinIcon = document.createElement('span');
+                    pinIcon.className = 'conversation-item-pinned';
+                    pinIcon.innerHTML = '📌';
+                    pinIcon.title = '在分组中已置顶';
+                    titleWrapper.appendChild(pinIcon);
+                }
+
+                contentWrapper.appendChild(titleWrapper);
 
                 const timeWrapper = document.createElement('div');
                 timeWrapper.className = 'group-conversation-time';
@@ -4490,8 +4909,7 @@ async function loadGroupConversations(groupId) {
                     minute: '2-digit'
                 });
 
-                item.appendChild(title);
-                item.appendChild(timeWrapper);
+                contentWrapper.appendChild(timeWrapper);
 
                 // 如果有第一条消息，显示内容预览
                 if (fullConv.messages && fullConv.messages.length > 0) {
@@ -4504,9 +4922,31 @@ async function loadGroupConversations(groupId) {
                             preview += '...';
                         }
                         content.textContent = preview;
-                        item.appendChild(content);
+                        contentWrapper.appendChild(content);
                     }
                 }
+
+                item.appendChild(contentWrapper);
+
+                // 添加三个点菜单按钮
+                const menuBtn = document.createElement('button');
+                menuBtn.className = 'conversation-item-menu';
+                menuBtn.innerHTML = '⋯';
+                menuBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    contextMenuConversationId = conv.id;
+                    showConversationContextMenu(e);
+                };
+                item.appendChild(menuBtn);
+
+                item.onclick = () => {
+                    // 切换到对话界面，但保持分组详情状态
+                    const groupDetailPage = document.getElementById('group-detail-page');
+                    const chatContainer = document.querySelector('.chat-container');
+                    if (groupDetailPage) groupDetailPage.style.display = 'none';
+                    if (chatContainer) chatContainer.style.display = 'flex';
+                    loadConversation(conv.id);
+                };
 
                 list.appendChild(item);
             } catch (err) {
@@ -4593,8 +5033,16 @@ async function deleteGroup() {
             }
         });
 
-        exitGroupDetail();
-        loadGroups();
+        // 如果"移动到分组"子菜单是打开的，刷新它
+        const submenu = document.getElementById('move-to-group-submenu');
+        if (submenu && submenu.style.display !== 'none') {
+            // 子菜单是打开的，重新加载分组列表并刷新子菜单
+            await loadGroups();
+            await showMoveToGroupSubmenu();
+        } else {
+            exitGroupDetail();
+            loadGroups();
+        }
     } catch (error) {
         console.error('删除分组失败:', error);
         alert('删除失败: ' + (error.message || '未知错误'));
@@ -4726,12 +5174,19 @@ async function deleteGroupFromContext() {
             }
         });
 
-        // 如果当前在分组详情页，退出详情页
-        if (currentGroupId === groupId) {
-            exitGroupDetail();
+        // 如果"移动到分组"子菜单是打开的，刷新它
+        const submenu = document.getElementById('move-to-group-submenu');
+        if (submenu && submenu.style.display !== 'none') {
+            // 子菜单是打开的，重新加载分组列表并刷新子菜单
+            await loadGroups();
+            await showMoveToGroupSubmenu();
+        } else {
+            // 如果当前在分组详情页，退出详情页
+            if (currentGroupId === groupId) {
+                exitGroupDetail();
+            }
+            loadGroups();
         }
-
-        loadGroups();
     } catch (error) {
         console.error('删除分组失败:', error);
         alert('删除失败: ' + (error.message || '未知错误'));

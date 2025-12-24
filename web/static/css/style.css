@@ -5130,42 +5130,45 @@ header {
 }
 
 .conversation-item-menu {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     padding: 0;
     border: none;
     background: transparent;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
+    opacity: 0.6;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1;
 }
 
-.conversation-item:hover .conversation-item-menu {
+.conversation-item:hover .conversation-item-menu,
+.group-conversation-item:hover .conversation-item-menu {
     opacity: 1;
 }
 
 .conversation-item-menu:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
+    opacity: 1;
 }
 
 /* 分组详情页面 */
 .group-detail-page {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--bg-primary);
-    z-index: 10;
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-primary);
+    overflow: hidden;
+    height: 100%;
 }
 
 .group-detail-header {
@@ -5244,55 +5247,92 @@ header {
     flex: 1;
     overflow-y: auto;
     padding: 24px;
+    background: #f5f7fa;
 }
 
 .group-conversations-list {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
+    max-width: 100%;
 }
 
 .group-conversation-item {
-    padding: 16px;
+    padding: 12px 16px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
 }
 
 .group-conversation-item:hover {
+    background: var(--bg-tertiary);
     border-color: var(--accent-color);
-    box-shadow: 0 2px 8px rgba(0, 102, 255, 0.1);
+}
+
+.group-conversation-item.active {
+    background: rgba(0, 102, 255, 0.08);
+    border-color: var(--accent-color);
+}
+
+.group-conversation-item:hover .conversation-item-menu {
+    opacity: 1;
+}
+
+.group-conversation-content-wrapper {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.group-conversation-item .conversation-item-menu {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    opacity: 0.6;
+    flex-shrink: 0;
 }
 
 .group-conversation-title {
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 0.9375rem;
+    font-weight: 500;
     color: var(--text-primary);
-    margin-bottom: 8px;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
 }
 
 .group-conversation-time {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    line-height: 1.4;
 }
 
 .group-conversation-content {
-    margin-top: 12px;
-    padding: 12px;
+    margin-top: 4px;
+    padding: 8px 12px;
     background: var(--bg-secondary);
     border-radius: 6px;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 0.8125rem;
-    color: var(--text-primary);
-    max-height: 200px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    max-height: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
 }
 
 /* 批量管理模态框 */
@@ -5559,7 +5599,18 @@ header {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     min-width: 160px;
+    max-width: 240px;
+    max-height: 400px;
+    overflow-y: auto;
     padding: 4px;
+    z-index: 10001;
+}
+
+.context-submenu[style*="right: 100%"] {
+    left: auto;
+    right: 100%;
+    margin-left: 0;
+    margin-right: 4px;
 }
 
 .context-submenu-item {
@@ -5572,6 +5623,13 @@ header {
     font-size: 0.875rem;
     border-radius: 6px;
     transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.context-submenu-item svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
 }
 
 .context-submenu-item:hover {

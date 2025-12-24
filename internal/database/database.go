@@ -242,6 +242,11 @@ func (db *DB) initTables() error {
 		// 不返回错误，允许继续运行
 	}
 
+	if err := db.migrateConversationGroupMappingsTable(); err != nil {
+		db.logger.Warn("迁移conversation_group_mappings表失败", zap.Error(err))
+		// 不返回错误，允许继续运行
+	}
+
 	if _, err := db.Exec(createIndexes); err != nil {
 		return fmt.Errorf("创建索引失败: %w", err)
 	}
@@ -327,6 +332,30 @@ func (db *DB) migrateConversationGroupsTable() error {
 	} else if count == 0 {
 		// 字段不存在，添加它
 		if _, err := db.Exec("ALTER TABLE conversation_groups ADD COLUMN pinned INTEGER DEFAULT 0"); err != nil {
+			db.logger.Warn("添加pinned字段失败", zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
+// migrateConversationGroupMappingsTable 迁移conversation_group_mappings表，添加新字段
+func (db *DB) migrateConversationGroupMappingsTable() error {
+	// 检查pinned字段是否存在
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('conversation_group_mappings') WHERE name='pinned'").Scan(&count)
+	if err != nil {
+		// 如果查询失败，尝试添加字段
+		if _, addErr := db.Exec("ALTER TABLE conversation_group_mappings ADD COLUMN pinned INTEGER DEFAULT 0"); addErr != nil {
+			// 如果字段已存在，忽略错误
+			errMsg := strings.ToLower(addErr.Error())
+			if !strings.Contains(errMsg, "duplicate column") && !strings.Contains(errMsg, "already exists") {
+				db.logger.Warn("添加pinned字段失败", zap.Error(addErr))
+			}
+		}
+	} else if count == 0 {
+		// 字段不存在，添加它
+		if _, err := db.Exec("ALTER TABLE conversation_group_mappings ADD COLUMN pinned INTEGER DEFAULT 0"); err != nil {
 			db.logger.Warn("添加pinned字段失败", zap.Error(err))
 		}
 	}

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"cyberstrike-ai/internal/database"
 
@@ -175,6 +176,16 @@ func (h *GroupHandler) RemoveConversationFromGroup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "移除成功"})
 }
 
+// GroupConversation 分组对话响应结构
+type GroupConversation struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Pinned      bool      `json:"pinned"`
+	GroupPinned bool      `json:"groupPinned"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
 // GetGroupConversations 获取分组中的所有对话
 func (h *GroupHandler) GetGroupConversations(c *gin.Context) {
 	groupID := c.Param("id")
@@ -186,7 +197,31 @@ func (h *GroupHandler) GetGroupConversations(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, conversations)
+	// 获取每个对话在分组中的置顶状态
+	groupConvs := make([]GroupConversation, 0, len(conversations))
+	for _, conv := range conversations {
+		// 查询分组内置顶状态
+		var groupPinned int
+		err := h.db.QueryRow(
+			"SELECT COALESCE(pinned, 0) FROM conversation_group_mappings WHERE conversation_id = ? AND group_id = ?",
+			conv.ID, groupID,
+		).Scan(&groupPinned)
+		if err != nil {
+			h.logger.Warn("查询分组内置顶状态失败", zap.String("conversationId", conv.ID), zap.Error(err))
+			groupPinned = 0
+		}
+
+		groupConvs = append(groupConvs, GroupConversation{
+			ID:          conv.ID,
+			Title:       conv.Title,
+			Pinned:      conv.Pinned,
+			GroupPinned: groupPinned != 0,
+			CreatedAt:   conv.CreatedAt,
+			UpdatedAt:   conv.UpdatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, groupConvs)
 }
 
 // UpdateConversationPinnedRequest 更新对话置顶状态请求
@@ -230,6 +265,31 @@ func (h *GroupHandler) UpdateGroupPinned(c *gin.Context) {
 
 	if err := h.db.UpdateGroupPinned(groupID, req.Pinned); err != nil {
 		h.logger.Error("更新分组置顶状态失败", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "更新成功"})
+}
+
+// UpdateConversationPinnedInGroupRequest 更新分组对话置顶状态请求
+type UpdateConversationPinnedInGroupRequest struct {
+	Pinned bool `json:"pinned"`
+}
+
+// UpdateConversationPinnedInGroup 更新对话在分组中的置顶状态
+func (h *GroupHandler) UpdateConversationPinnedInGroup(c *gin.Context) {
+	groupID := c.Param("id")
+	conversationID := c.Param("conversationId")
+
+	var req UpdateConversationPinnedInGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.db.UpdateConversationPinnedInGroup(conversationID, groupID, req.Pinned); err != nil {
+		h.logger.Error("更新分组对话置顶状态失败", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -374,6 +374,7 @@ func setupRoutes(
 		protected.GET("/groups/:id/conversations", groupHandler.GetGroupConversations)
 		protected.POST("/groups/conversations", groupHandler.AddConversationToGroup)
 		protected.DELETE("/groups/:id/conversations/:conversationId", groupHandler.RemoveConversationFromGroup)
+		protected.PUT("/groups/:id/conversations/:conversationId/pinned", groupHandler.UpdateConversationPinnedInGroup)
 
 		// 监控
 		protected.GET("/monitor", monitorHandler.Monitor)

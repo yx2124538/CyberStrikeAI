@@ -428,7 +428,22 @@ function handleStreamEvent(event, progressElement, progressId,
     switch (event.type) {
         case 'conversation':
             if (event.data && event.data.conversationId) {
+                // 在更新之前，先获取任务对应的原始对话ID
+                const taskState = progressTaskState.get(progressId);
+                const originalConversationId = taskState?.conversationId;
+                
+                // 更新任务状态
                 updateProgressConversation(progressId, event.data.conversationId);
+                
+                // 如果用户已经开始了新对话（currentConversationId 为 null），
+                // 且这个 conversation 事件来自旧对话，就不更新 currentConversationId
+                if (currentConversationId === null && originalConversationId !== null) {
+                    // 用户已经开始了新对话，忽略旧对话的 conversation 事件
+                    // 但仍然更新任务状态，以便正确显示任务信息
+                    break;
+                }
+                
+                // 更新当前对话ID
                 currentConversationId = event.data.conversationId;
                 updateActiveConversation();
                 addAttackChainButton(currentConversationId);
@@ -573,6 +588,10 @@ function handleStreamEvent(event, progressElement, progressId,
             break;
             
         case 'response':
+            // 在更新之前，先获取任务对应的原始对话ID
+            const responseTaskState = progressTaskState.get(progressId);
+            const responseOriginalConversationId = responseTaskState?.conversationId;
+            
             // 先添加助手回复
             const responseData = event.data || {};
             const mcpIds = responseData.mcpExecutionIds || [];
@@ -580,6 +599,15 @@ function handleStreamEvent(event, progressElement, progressId,
             
             // 更新对话ID
             if (responseData.conversationId) {
+                // 如果用户已经开始了新对话（currentConversationId 为 null），
+                // 且这个 response 事件来自旧对话，就不更新 currentConversationId 也不添加消息
+                if (currentConversationId === null && responseOriginalConversationId !== null) {
+                    // 用户已经开始了新对话，忽略旧对话的 response 事件
+                    // 但仍然更新任务状态，以便正确显示任务信息
+                    updateProgressConversation(progressId, responseData.conversationId);
+                    break;
+                }
+                
                 currentConversationId = responseData.conversationId;
                 updateActiveConversation();
                 addAttackChainButton(currentConversationId);

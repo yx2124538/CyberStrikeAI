@@ -105,10 +105,12 @@ async function sendMessage() {
     // 显示用户消息
     addMessage('user', message);
     
-    // 立即清空输入框并清除草稿（在发送请求之前）
-    input.value = '';
-    // 强制重置输入框高度为初始高度（44px）
-    input.style.height = '44px';
+    // 清除防抖定时器，防止在清空输入框后重新保存草稿
+    if (draftSaveTimer) {
+        clearTimeout(draftSaveTimer);
+        draftSaveTimer = null;
+    }
+    
     // 立即清除草稿，防止页面刷新时恢复
     clearChatDraft();
     // 使用同步方式确保草稿被清除
@@ -117,6 +119,11 @@ async function sendMessage() {
     } catch (e) {
         // 忽略错误
     }
+    
+    // 立即清空输入框并清除草稿（在发送请求之前）
+    input.value = '';
+    // 强制重置输入框高度为初始高度（44px）
+    input.style.height = '44px';
     
     // 创建进度消息容器（使用详细的进度展示）
     const progressId = addProgressMessage();
@@ -1162,8 +1169,19 @@ function startNewConversation() {
     updateActiveConversation();
     // 刷新对话列表，确保显示最新的历史对话
     loadConversations();
-    // 恢复草稿（新对话时也保留用户输入）
-    restoreChatDraft();
+    // 清除防抖定时器，防止恢复草稿时触发保存
+    if (draftSaveTimer) {
+        clearTimeout(draftSaveTimer);
+        draftSaveTimer = null;
+    }
+    // 清除草稿，新对话不应该恢复之前的草稿
+    clearChatDraft();
+    // 清空输入框
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.value = '';
+        chatInput.style.height = '44px';
+    }
 }
 
 // 加载对话列表（按时间分组）

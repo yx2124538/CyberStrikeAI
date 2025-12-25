@@ -3747,14 +3747,10 @@ async function loadGroups() {
 // 加载对话列表（修改为支持分组和置顶）
 async function loadConversationsWithGroups(searchQuery = '') {
     try {
-        // 先加载分组列表（如果还没有加载）
-        if (groupsCache.length === 0) {
-            await loadGroups();
-        }
-        // 先加载分组映射（如果还没有加载）
-        if (Object.keys(conversationGroupMappingCache).length === 0) {
-            await loadConversationGroupMapping();
-        }
+        // 总是重新加载分组列表和分组映射，确保缓存是最新的
+        // 这样可以正确处理分组被删除后的情况
+        await loadGroups();
+        await loadConversationGroupMapping();
 
         // 如果有搜索关键词，使用更大的limit以获取所有匹配结果
         const limit = (searchQuery && searchQuery.trim()) ? 1000 : 100;
@@ -3927,6 +3923,17 @@ async function showConversationContextMenu(event) {
     const menu = document.getElementById('conversation-context-menu');
     if (!menu) return;
 
+    // 先隐藏子菜单，确保每次打开菜单时子菜单都是关闭状态
+    const submenu = document.getElementById('move-to-group-submenu');
+    if (submenu) {
+        submenu.style.display = 'none';
+        submenuVisible = false;
+    }
+    // 清除所有定时器
+    clearSubmenuHideTimeout();
+    clearSubmenuShowTimeout();
+    submenuLoading = false;
+
     const convId = contextMenuConversationId;
     // 先获取对话的置顶状态并更新菜单文本（在显示菜单之前）
     if (convId) {
@@ -3985,8 +3992,7 @@ async function showConversationContextMenu(event) {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     
-    // 获取子菜单的宽度（如果存在）
-    const submenu = document.getElementById('move-to-group-submenu');
+    // 获取子菜单的宽度（如果存在，重用之前获取的submenu变量）
     const submenuWidth = submenu ? 180 : 0; // 子菜单宽度 + 间距
     
     let left = event.clientX;
@@ -4035,8 +4041,14 @@ async function showConversationContextMenu(event) {
 
     // 点击外部关闭菜单
     const closeMenu = (e) => {
-        if (!menu.contains(e.target)) {
-            menu.style.display = 'none';
+        // 检查点击是否在主菜单或子菜单内
+        const moveToGroupSubmenuEl = document.getElementById('move-to-group-submenu');
+        const clickedInMenu = menu.contains(e.target);
+        const clickedInSubmenu = moveToGroupSubmenuEl && moveToGroupSubmenuEl.contains(e.target);
+        
+        if (!clickedInMenu && !clickedInSubmenu) {
+            // 使用 closeContextMenu 确保同时关闭主菜单和子菜单
+            closeContextMenu();
             document.removeEventListener('click', closeMenu);
         }
     };
@@ -4245,6 +4257,21 @@ async function showMoveToGroupSubmenu() {
     const submenu = document.getElementById('move-to-group-submenu');
     if (!submenu) return;
 
+    // 如果子菜单已经显示，不需要重复渲染
+    if (submenuVisible && submenu.style.display === 'block') {
+        return;
+    }
+
+    // 如果正在加载中，避免重复调用
+    if (submenuLoading) {
+        return;
+    }
+
+    // 清除隐藏定时器
+    clearSubmenuHideTimeout();
+    
+    // 标记为加载中
+    submenuLoading = true;
     submenu.innerHTML = '';
 
     // 确保分组列表已加载 - 强制重新加载以确保数据是最新的
@@ -4362,6 +4389,8 @@ async function showMoveToGroupSubmenu() {
     submenu.appendChild(addItem);
 
     submenu.style.display = 'block';
+    submenuVisible = true;
+    submenuLoading = false;
     
     // 计算子菜单位置，防止溢出
     setTimeout(() => {
@@ -4384,6 +4413,86 @@ async function showMoveToGroupSubmenu() {
             submenu.style.top = (currentTop - overflow - 8) + 'px';
         }
     }, 0);
+}
+
+// 隐藏移动到分组子菜单的定时器
+let submenuHideTimeout = null;
+// 显示子菜单的防抖定时器
+let submenuShowTimeout = null;
+// 子菜单是否正在加载中
+let submenuLoading = false;
+// 子菜单是否已显示
+let submenuVisible = false;
+
+// 隐藏移动到分组子菜单
+function hideMoveToGroupSubmenu() {
+    const submenu = document.getElementById('move-to-group-submenu');
+    if (submenu) {
+        submenu.style.display = 'none';
+        submenuVisible = false;
+    }
+}
+
+// 清除隐藏子菜单的定时器
+function clearSubmenuHideTimeout() {
+    if (submenuHideTimeout) {
+        clearTimeout(submenuHideTimeout);
+        submenuHideTimeout = null;
+    }
+}
+
+// 清除显示子菜单的定时器
+function clearSubmenuShowTimeout() {
+    if (submenuShowTimeout) {
+        clearTimeout(submenuShowTimeout);
+        submenuShowTimeout = null;
+    }
+}
+
+// 处理鼠标进入"移动到分组"菜单项（带防抖）
+function handleMoveToGroupSubmenuEnter() {
+    // 清除隐藏定时器
+    clearSubmenuHideTimeout();
+    
+    // 如果子菜单已经显示，不需要重复调用
+    const submenu = document.getElementById('move-to-group-submenu');
+    if (submenu && submenuVisible && submenu.style.display === 'block') {
+        return;
+    }
+    
+    // 清除之前的显示定时器
+    clearSubmenuShowTimeout();
+    
+    // 使用防抖延迟显示，避免频繁触发
+    submenuShowTimeout = setTimeout(() => {
+        showMoveToGroupSubmenu();
+        submenuShowTimeout = null;
+    }, 100);
+}
+
+// 处理鼠标离开"移动到分组"菜单项
+function handleMoveToGroupSubmenuLeave(event) {
+    const submenu = document.getElementById('move-to-group-submenu');
+    if (!submenu) return;
+    
+    // 清除显示定时器
+    clearSubmenuShowTimeout();
+    
+    // 检查鼠标是否移动到子菜单
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget && submenu.contains(relatedTarget)) {
+        // 鼠标移动到子菜单，不清除
+        return;
+    }
+    
+    // 清除之前的隐藏定时器
+    clearSubmenuHideTimeout();
+    
+    // 延迟隐藏，给用户时间移动到子菜单
+    submenuHideTimeout = setTimeout(() => {
+        hideMoveToGroupSubmenu();
+        submenuHideTimeout = null;
+    }, 200);
 }
 
 // 移动对话到分组
@@ -4508,7 +4617,12 @@ function closeContextMenu() {
     const submenu = document.getElementById('move-to-group-submenu');
     if (submenu) {
         submenu.style.display = 'none';
+        submenuVisible = false;
     }
+    // 清除所有定时器
+    clearSubmenuHideTimeout();
+    clearSubmenuShowTimeout();
+    submenuLoading = false;
     contextMenuConversationId = null;
 }
 
@@ -5077,8 +5191,11 @@ async function deleteGroup() {
             await showMoveToGroupSubmenu();
         } else {
             exitGroupDetail();
-            loadGroups();
+            await loadGroups();
         }
+        
+        // 刷新对话列表，确保之前被分组的对话能立即显示
+        await loadConversationsWithGroups();
     } catch (error) {
         console.error('删除分组失败:', error);
         alert('删除失败: ' + (error.message || '未知错误'));
@@ -5221,8 +5338,11 @@ async function deleteGroupFromContext() {
             if (currentGroupId === groupId) {
                 exitGroupDetail();
             }
-            loadGroups();
+            await loadGroups();
         }
+        
+        // 刷新对话列表，确保之前被分组的对话能立即显示
+        await loadConversationsWithGroups();
     } catch (error) {
         console.error('删除分组失败:', error);
         alert('删除失败: ' + (error.message || '未知错误'));

@@ -332,6 +332,10 @@ Build an attack chain for the latest engagement and export the node list with se
 - 2025-11-14 – Optimized tool lookups (O(1)), execution record cleanup, and DB pagination.
 - 2025-11-13 – Added web authentication, settings UI, and MCP stdio mode integration.
 
+## 404Starlink 
+
+< img src lazysrc="https://github.com/knownsec/404StarLink-Project/raw/master/logo.png" width="30%"> CyberStrikeAI has joined [404Starlink](https://github.com/knownsec/404StarLink)
+
 ---
 
 Need help or want to contribute? Open an issue or PR—community tooling additions are welcome!

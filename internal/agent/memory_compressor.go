@@ -17,10 +17,14 @@ import (
 )
 
 const (
-	DefaultMinRecentMessage = 10
-	defaultChunkSize        = 10
-	defaultMaxImages        = 3
-	defaultSummaryTimeout   = 10 * time.Minute
+	// DefaultMinRecentMessage 压缩历史消息时保留的最近消息数量，确保最近的对话上下文不被压缩
+	DefaultMinRecentMessage = 5
+	// defaultChunkSize 压缩历史消息时每次处理的消息块大小，将旧消息分成多个块进行摘要
+	defaultChunkSize = 10
+	// defaultMaxImages 压缩时最多保留的图片数量，超过此数量的图片会被移除以节省上下文空间
+	defaultMaxImages = 3
+	// defaultSummaryTimeout 生成消息摘要时的超时时间
+	defaultSummaryTimeout = 10 * time.Minute
 
 	summaryPromptTemplate = `你是一名负责为安全代理执行上下文压缩的助手，任务是在保持所有关键渗透信息完整的前提下压缩扫描数据。
 

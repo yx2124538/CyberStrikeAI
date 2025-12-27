@@ -25,6 +25,9 @@ import (
 // KnowledgeToolRegistrar 知识库工具注册器接口
 type KnowledgeToolRegistrar func() error
 
+// VulnerabilityToolRegistrar 漏洞工具注册器接口
+type VulnerabilityToolRegistrar func() error
+
 // RetrieverUpdater 检索器更新接口
 type RetrieverUpdater interface {
 	UpdateConfig(config *knowledge.RetrievalConfig)
@@ -40,19 +43,20 @@ type AppUpdater interface {
 
 // ConfigHandler 配置处理器
 type ConfigHandler struct {
-	configPath             string
-	config                 *config.Config
-	mcpServer              *mcp.Server
-	executor               *security.Executor
-	agent                  AgentUpdater            // Agent接口，用于更新Agent配置
-	attackChainHandler     AttackChainUpdater      // 攻击链处理器接口，用于更新配置
-	externalMCPMgr         *mcp.ExternalMCPManager // 外部MCP管理器
-	knowledgeToolRegistrar KnowledgeToolRegistrar  // 知识库工具注册器（可选）
-	retrieverUpdater       RetrieverUpdater        // 检索器更新器（可选）
-	knowledgeInitializer   KnowledgeInitializer    // 知识库初始化器（可选）
-	appUpdater             AppUpdater              // App更新器（可选）
-	logger                 *zap.Logger
-	mu                     sync.RWMutex
+	configPath                 string
+	config                     *config.Config
+	mcpServer                  *mcp.Server
+	executor                   *security.Executor
+	agent                      AgentUpdater                // Agent接口，用于更新Agent配置
+	attackChainHandler         AttackChainUpdater          // 攻击链处理器接口，用于更新配置
+	externalMCPMgr             *mcp.ExternalMCPManager    // 外部MCP管理器
+	knowledgeToolRegistrar     KnowledgeToolRegistrar      // 知识库工具注册器（可选）
+	vulnerabilityToolRegistrar VulnerabilityToolRegistrar // 漏洞工具注册器（可选）
+	retrieverUpdater           RetrieverUpdater            // 检索器更新器（可选）
+	knowledgeInitializer       KnowledgeInitializer         // 知识库初始化器（可选）
+	appUpdater                 AppUpdater                  // App更新器（可选）
+	logger                     *zap.Logger
+	mu                         sync.RWMutex
 }
 
 // AttackChainUpdater 攻击链处理器更新接口
@@ -85,6 +89,13 @@ func (h *ConfigHandler) SetKnowledgeToolRegistrar(registrar KnowledgeToolRegistr
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.knowledgeToolRegistrar = registrar
+}
+
+// SetVulnerabilityToolRegistrar 设置漏洞工具注册器
+func (h *ConfigHandler) SetVulnerabilityToolRegistrar(registrar VulnerabilityToolRegistrar) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.vulnerabilityToolRegistrar = registrar
 }
 
 // SetRetrieverUpdater 设置检索器更新器
@@ -677,6 +688,16 @@ func (h *ConfigHandler) ApplyConfig(c *gin.Context) {
 
 	// 重新注册安全工具
 	h.executor.RegisterTools(h.mcpServer)
+
+	// 重新注册漏洞记录工具（内置工具，必须注册）
+	if h.vulnerabilityToolRegistrar != nil {
+		h.logger.Info("重新注册漏洞记录工具")
+		if err := h.vulnerabilityToolRegistrar(); err != nil {
+			h.logger.Error("重新注册漏洞记录工具失败", zap.Error(err))
+		} else {
+			h.logger.Info("漏洞记录工具已重新注册")
+		}
+	}
 
 	// 如果知识库启用，重新注册知识库工具
 	if h.config.Knowledge.Enabled && h.knowledgeToolRegistrar != nil {

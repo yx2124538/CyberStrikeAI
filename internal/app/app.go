@@ -282,6 +282,13 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 		agentHandler:       agentHandler,
 	}
 
+	// 设置漏洞工具注册器（内置工具，必须设置）
+	vulnerabilityRegistrar := func() error {
+		registerVulnerabilityTool(mcpServer, db, log.Logger)
+		return nil
+	}
+	configHandler.SetVulnerabilityToolRegistrar(vulnerabilityRegistrar)
+
 	// 设置知识库初始化器（用于动态初始化，需要在 App 创建后设置）
 	configHandler.SetKnowledgeInitializer(func() (*handler.KnowledgeHandler, error) {
 		knowledgeHandler, err := initializeKnowledge(cfg, db, knowledgeDBConn, mcpServer, agentHandler, app, log.Logger)

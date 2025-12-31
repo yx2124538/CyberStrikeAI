@@ -398,8 +398,8 @@ function updateKnowledgeStats(data, categoryCount) {
         }
     }
     
-    // 总分类数（来自分页信息）
-    const totalCategories = knowledgePagination.total || categoryCount;
+    // 总分类数（来自分页信息，只有在未定义时才使用当前页分类数作为后备值）
+    const totalCategories = (knowledgePagination.total != null) ? knowledgePagination.total : categoryCount;
     
     statsContainer.innerHTML = `
         <div class="knowledge-stat-item">
@@ -1035,8 +1035,7 @@ async function deleteKnowledgeItem(id) {
                     }
                 }
                 
-                // 更新统计信息（临时更新，稍后会重新加载）
-                updateKnowledgeStatsAfterDelete();
+                // 不在这里更新统计信息，等待重新加载数据后由正确的逻辑更新
             }
         }, 300);
     }

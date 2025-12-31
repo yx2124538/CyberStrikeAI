@@ -17,7 +17,7 @@ CyberStrikeAI is an **AI-native security testing platform** built in Go. It inte
   <img src="./img/效果.png" alt="Preview" width="560">
 - MCP stdio mode  
   <img src="./img/mcp-stdio2.png" alt="Preview" width="560">
-- External MCP servers & attack-chain view   
+- MCP management & attack-chain view   
   <img src="./img/MCP管理.png" alt="Preview" width="560">   
   <img src="./img/攻击链.png" alt="Preview" width="560">
 - Vulnerability management  

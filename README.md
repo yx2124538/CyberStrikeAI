@@ -9,8 +9,6 @@
 
 CyberStrikeAI is an **AI-native security testing platform** built in Go. It integrates 100+ security tools, an intelligent orchestration engine, and comprehensive lifecycle management capabilities. Through native MCP protocol and AI agents, it enables end-to-end automation from conversational commands to vulnerability discovery, attack-chain analysis, knowledge retrieval, and result visualization—delivering an auditable, traceable, and collaborative testing environment for security teams.
 
-> In security, what is truly scarce is not tools, but judgment; judgment is born from experience, and experience is often bound to individuals, difficult to inherit and difficult to reuse. CyberStrikeAI does not attempt to automate attacks, but instead focuses on a harder problem: in complex, dynamic, and uncertain environments, what should be done next, and why. It does not pursue more aggressive automation; rather, it seeks to transform the way security experts think—their decision paths and lessons learned from failure—into a system capability that is constrained, auditable, and evolvable. If experience can exist beyond individuals, then security can finally become something that can be inherited by systems.
-
 
 ## Interface & Integration Preview
 - Web console  
@@ -321,7 +319,7 @@ Build an attack chain for the latest engagement and export the node list with se
 
 ## Changelog (Recent)
 
-- 2025-12-26 – Added batch task management feature: create task queues with multiple tasks, add/edit/delete tasks before execution, and execute them sequentially. Each task runs as a separate conversation with status tracking (pending/running/completed/failed/cancelled). All queues and tasks are persisted in the database.
+- 2026-01-01 – Added batch task management feature: create task queues with multiple tasks, add/edit/delete tasks before execution, and execute them sequentially. Each task runs as a separate conversation with status tracking (pending/running/completed/failed/cancelled). All queues and tasks are persisted in the database.
 - 2025-12-25 – Added vulnerability management feature: full CRUD operations for tracking vulnerabilities discovered during testing. Supports severity levels (critical/high/medium/low/info), status workflow (open/confirmed/fixed/false_positive), filtering by conversation/severity/status, and comprehensive statistics dashboard.
 - 2025-12-25 – Added conversation grouping feature: organize conversations into groups, pin groups to top, rename/delete groups via context menu. All group data is persisted in the database.
 - 2025-12-24 – Refactored attack chain generation logic, achieving 2x faster generation speed. Redesigned attack chain frontend visualization for improved user experience.

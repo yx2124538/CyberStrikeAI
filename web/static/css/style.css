@@ -6187,6 +6187,728 @@ header {
     background: rgba(0, 102, 255, 0.1);
 }
 
+/* 任务管理页面样式 */
+.tasks-stats-bar {
+    display: flex;
+    gap: 24px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, rgba(0, 102, 255, 0.05) 0%, rgba(0, 102, 255, 0.02) 100%);
+    border: 1px solid rgba(0, 102, 255, 0.15);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.tasks-controls {
+    margin-bottom: 24px;
+}
+
+.tasks-filters {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.tasks-filters label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.tasks-filters select {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-width: 150px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.tasks-filters select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.1);
+}
+
+.tasks-filters select:hover {
+    border-color: var(--accent-color);
+}
+
+.tasks-batch-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(0, 102, 255, 0.05);
+    border: 1px solid rgba(0, 102, 255, 0.2);
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.tasks-batch-actions span {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.auto-refresh-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.auto-refresh-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.show-history-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    margin-left: auto;
+}
+
+.show-history-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+.tasks-history-section {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 2px solid var(--border-color);
+}
+
+.tasks-history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tasks-history-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.task-item-history {
+    opacity: 0.85;
+}
+
+.task-item-history:hover {
+    opacity: 1;
+}
+
+.task-history-badge {
+    font-size: 0.875rem;
+    margin-left: 4px;
+    opacity: 0.7;
+}
+
+.task-stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.task-stat-label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.task-stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--accent-color);
+}
+
+.tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.tasks-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.tasks-empty p {
+    font-size: 1rem;
+    margin-bottom: 16px;
+}
+
+.task-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s ease;
+}
+
+.task-item:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.task-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.task-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.task-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+.task-checkbox-placeholder {
+    width: 18px;
+    height: 18px;
+}
+
+.task-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.task-status-running {
+    background: rgba(0, 123, 255, 0.1);
+    color: var(--accent-color);
+    border: 1px solid rgba(0, 123, 255, 0.3);
+}
+
+.task-status-cancelling {
+    background: rgba(255, 193, 7, 0.1);
+    color: #b8860b;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.task-status-completed {
+    background: rgba(40, 167, 69, 0.1);
+    color: var(--success-color);
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.task-status-failed,
+.task-status-timeout {
+    background: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.task-status-cancelled {
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+.task-status-unknown {
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.task-message {
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    word-break: break-word;
+}
+
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.task-time {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.task-duration {
+    font-size: 0.8125rem;
+    color: var(--accent-color);
+    font-weight: 500;
+    white-space: nowrap;
+    padding: 4px 8px;
+    background: rgba(0, 102, 255, 0.1);
+    border-radius: 4px;
+}
+
+.task-details {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8125rem;
+}
+
+.task-id-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.task-id-value {
+    color: var(--text-primary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: var(--bg-secondary);
+    padding: 2px 8px;
+    border-radius: 4px;
+    word-break: break-all;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.task-id-value:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent-color);
+}
+
+@media (max-width: 768px) {
+    .tasks-stats-bar {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .task-stat-item {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .tasks-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .tasks-filters select {
+        min-width: 100%;
+    }
+    
+    .tasks-batch-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .page-header-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .task-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .task-actions {
+        width: 100%;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+    
+    .task-duration {
+        font-size: 0.75rem;
+        padding: 2px 6px;
+    }
+}
+
+/* 批量任务相关样式 */
+.batch-queues-section {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 2px solid var(--border-color);
+}
+
+.batch-queues-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.batch-queues-header h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.batch-queues-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.batch-queue-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.batch-queue-item:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--accent-color);
+}
+
+.batch-queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.batch-queue-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    flex-wrap: wrap;
+}
+
+.batch-queue-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.batch-queue-status-pending {
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+.batch-queue-status-running {
+    background: rgba(0, 123, 255, 0.1);
+    color: var(--accent-color);
+    border: 1px solid rgba(0, 123, 255, 0.3);
+}
+
+.batch-queue-status-completed {
+    background: rgba(40, 167, 69, 0.1);
+    color: var(--success-color);
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.batch-queue-status-cancelled {
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+    border: 1px solid rgba(108, 117, 125, 0.3);
+}
+
+.batch-queue-id {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.batch-queue-time {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.batch-queue-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 200px;
+}
+
+.batch-queue-progress-bar {
+    flex: 1;
+    height: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.batch-queue-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+    transition: width 0.3s ease;
+}
+
+.batch-queue-progress-text {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    min-width: 60px;
+    text-align: right;
+}
+
+.batch-queue-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+}
+
+.batch-queue-stats span {
+    white-space: nowrap;
+}
+
+.batch-queue-detail-info {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.batch-queue-detail-info .detail-item {
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+}
+
+.batch-queue-detail-info .detail-item strong {
+    color: var(--text-primary);
+    margin-right: 8px;
+}
+
+.batch-queue-tasks-list {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.batch-queue-tasks-list h4 {
+    margin: 0 0 16px 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.batch-task-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    transition: all 0.2s ease;
+}
+
+.batch-task-item:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.batch-task-item-active {
+    border-color: var(--accent-color);
+    background: rgba(0, 102, 255, 0.02);
+}
+
+.batch-task-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.batch-task-header .btn-small {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.batch-task-header .batch-task-edit-btn {
+    margin-left: 8px;
+}
+
+.batch-task-header .batch-task-delete-btn {
+    margin-left: 8px;
+}
+
+.batch-task-index {
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 30px;
+}
+
+.batch-task-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.batch-task-status-pending {
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+}
+
+.batch-task-status-running {
+    background: rgba(0, 123, 255, 0.1);
+    color: var(--accent-color);
+}
+
+.batch-task-status-completed {
+    background: rgba(40, 167, 69, 0.1);
+    color: var(--success-color);
+}
+
+.batch-task-status-failed {
+    background: rgba(220, 53, 69, 0.1);
+    color: var(--error-color);
+}
+
+.batch-task-status-cancelled {
+    background: rgba(108, 117, 125, 0.1);
+    color: var(--text-secondary);
+}
+
+.batch-task-message {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.batch-task-time {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.batch-task-error {
+    font-size: 0.8125rem;
+    color: var(--error-color);
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(220, 53, 69, 0.05);
+    border-radius: 4px;
+    border-left: 3px solid var(--error-color);
+}
+
+.batch-task-result {
+    font-size: 0.8125rem;
+    color: var(--text-primary);
+    margin-top: 8px;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    max-height: 150px;
+    overflow-y: auto;
+    word-break: break-word;
+}
+
+.batch-import-stats {
+    display: none;
+    padding: 8px 12px;
+    background: rgba(0, 102, 255, 0.05);
+    border: 1px solid rgba(0, 102, 255, 0.2);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: var(--accent-color);
+}
+
+.batch-import-stat {
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .batch-queue-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .batch-queue-progress {
+        width: 100%;
+    }
+    
+    .batch-queue-stats {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .batch-task-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
 /* 漏洞管理页面样式 */
 .vulnerability-dashboard {
     margin-bottom: 24px;

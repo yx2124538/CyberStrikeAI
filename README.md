@@ -34,6 +34,7 @@ CyberStrikeAI is an **AI-native security testing platform** built in Go. It inte
 - 📚 Knowledge base with vector search and hybrid retrieval for security expertise
 - 📁 Conversation grouping with pinning, rename, and batch management
 - 🛡️ Vulnerability management with CRUD operations, severity tracking, status workflow, and statistics
+- 📋 Batch task management: create task queues, add multiple tasks, and execute them sequentially
 
 ## Tool Overview
 
@@ -109,6 +110,7 @@ CyberStrikeAI ships with 100+ curated tools covering the whole kill chain:
 - **History & audit** – Every conversation and tool invocation is stored in SQLite with replay.
 - **Conversation groups** – Organize conversations into groups, pin important groups, rename or delete groups via context menu.
 - **Vulnerability management** – Create, update, and track vulnerabilities discovered during testing. Filter by severity (critical/high/medium/low/info), status (open/confirmed/fixed/false_positive), and conversation. View statistics and export findings.
+- **Batch task management** – Create task queues with multiple tasks, add or edit tasks before execution, and run them sequentially. Each task executes as a separate conversation, with status tracking (pending/running/completed/failed/cancelled) and full execution history.
 - **Settings** – Tweak provider keys, MCP enablement, tool toggles, and agent iteration limits.
 
 ### Built-in Safeguards
@@ -221,6 +223,7 @@ CyberStrikeAI ships with 100+ curated tools covering the whole kill chain:
 ### Automation Hooks
 - **REST APIs** – everything the UI uses (auth, conversations, tool runs, monitor, vulnerabilities) is available over JSON.
 - **Vulnerability APIs** – manage vulnerabilities via `/api/vulnerabilities` endpoints: `GET /api/vulnerabilities` (list with filters), `POST /api/vulnerabilities` (create), `GET /api/vulnerabilities/:id` (get), `PUT /api/vulnerabilities/:id` (update), `DELETE /api/vulnerabilities/:id` (delete), `GET /api/vulnerabilities/stats` (statistics).
+- **Batch Task APIs** – manage batch task queues via `/api/batch-tasks` endpoints: `POST /api/batch-tasks` (create queue), `GET /api/batch-tasks` (list queues), `GET /api/batch-tasks/:queueId` (get queue), `POST /api/batch-tasks/:queueId/start` (start execution), `POST /api/batch-tasks/:queueId/cancel` (cancel), `DELETE /api/batch-tasks/:queueId` (delete), `POST /api/batch-tasks/:queueId/tasks` (add task), `PUT /api/batch-tasks/:queueId/tasks/:taskId` (update task), `DELETE /api/batch-tasks/:queueId/tasks/:taskId` (delete task). Tasks execute sequentially, each creating a separate conversation with full status tracking.
 - **Task control** – pause/resume/stop long scans, re-run steps with new params, or stream transcripts.
 - **Audit & security** – rotate passwords via `/api/auth/change-password`, enforce short-lived sessions, and restrict MCP ports at the network layer when exposing the service.
 
@@ -318,6 +321,7 @@ Build an attack chain for the latest engagement and export the node list with se
 
 ## Changelog (Recent)
 
+- 2025-12-26 – Added batch task management feature: create task queues with multiple tasks, add/edit/delete tasks before execution, and execute them sequentially. Each task runs as a separate conversation with status tracking (pending/running/completed/failed/cancelled). All queues and tasks are persisted in the database.
 - 2025-12-25 – Added vulnerability management feature: full CRUD operations for tracking vulnerabilities discovered during testing. Supports severity levels (critical/high/medium/low/info), status workflow (open/confirmed/fixed/false_positive), filtering by conversation/severity/status, and comprehensive statistics dashboard.
 - 2025-12-25 – Added conversation grouping feature: organize conversations into groups, pin groups to top, rename/delete groups via context menu. All group data is persisted in the database.
 - 2025-12-24 – Refactored attack chain generation logic, achieving 2x faster generation speed. Redesigned attack chain frontend visualization for improved user experience.

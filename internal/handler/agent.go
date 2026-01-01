@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 	"time"
+	"unicode/utf8"
 
 	"cyberstrike-ai/internal/agent"
 	"cyberstrike-ai/internal/database"
@@ -25,16 +25,16 @@ func safeTruncateString(s string, maxLen int) string {
 	if utf8.RuneCountInString(s) <= maxLen {
 		return s
 	}
-	
+
 	// 将字符串转换为 rune 切片以正确计算字符数
 	runes := []rune(s)
 	if len(runes) <= maxLen {
 		return s
 	}
-	
+
 	// 截断到最大长度
 	truncated := string(runes[:maxLen])
-	
+
 	// 尝试在标点符号或空格处截断，使截断更自然
 	// 在截断点往前查找合适的断点（不超过20%的长度）
 	searchRange := maxLen / 5
@@ -43,7 +43,7 @@ func safeTruncateString(s string, maxLen int) string {
 	}
 	breakChars := []rune("，。、 ,.;:!?！？/\\-_")
 	bestBreakPos := len(runes[:maxLen])
-	
+
 	for i := bestBreakPos - 1; i >= bestBreakPos-searchRange && i >= 0; i-- {
 		for _, breakChar := range breakChars {
 			if runes[i] == breakChar {
@@ -52,7 +52,7 @@ func safeTruncateString(s string, maxLen int) string {
 			}
 		}
 	}
-	
+
 found:
 	truncated = string(runes[:bestBreakPos])
 	return truncated + "..."
@@ -64,6 +64,7 @@ type AgentHandler struct {
 	db               *database.DB
 	logger           *zap.Logger
 	tasks            *AgentTaskManager
+	batchTaskManager *BatchTaskManager
 	knowledgeManager interface { // 知识库管理器接口
 		LogRetrieval(conversationID, messageID, query, riskType string, retrievedItems []string) error
 	}
@@ -71,11 +72,20 @@ type AgentHandler struct {
 
 // NewAgentHandler 创建新的Agent处理器
 func NewAgentHandler(agent *agent.Agent, db *database.DB, logger *zap.Logger) *AgentHandler {
+	batchTaskManager := NewBatchTaskManager()
+	batchTaskManager.SetDB(db)
+
+	// 从数据库加载所有批量任务队列
+	if err := batchTaskManager.LoadFromDB(); err != nil {
+		logger.Warn("从数据库加载批量任务队列失败", zap.Error(err))
+	}
+
 	return &AgentHandler{
-		agent:  agent,
-		db:     db,
-		logger: logger,
-		tasks:  NewAgentTaskManager(),
+		agent:            agent,
+		db:               db,
+		logger:           logger,
+		tasks:            NewAgentTaskManager(),
+		batchTaskManager: batchTaskManager,
 	}
 }
 
@@ -722,6 +732,283 @@ func (h *AgentHandler) ListAgentTasks(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"tasks": h.tasks.GetActiveTasks(),
 	})
+}
+
+// ListCompletedTasks 列出最近完成的任务历史
+func (h *AgentHandler) ListCompletedTasks(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"tasks": h.tasks.GetCompletedTasks(),
+	})
+}
+
+// BatchTaskRequest 批量任务请求
+type BatchTaskRequest struct {
+	Tasks []string `json:"tasks" binding:"required"` // 任务列表，每行一个任务
+}
+
+// CreateBatchQueue 创建批量任务队列
+func (h *AgentHandler) CreateBatchQueue(c *gin.Context) {
+	var req BatchTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(req.Tasks) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务列表不能为空"})
+		return
+	}
+
+	// 过滤空任务
+	validTasks := make([]string, 0, len(req.Tasks))
+	for _, task := range req.Tasks {
+		if task != "" {
+			validTasks = append(validTasks, task)
+		}
+	}
+
+	if len(validTasks) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "没有有效的任务"})
+		return
+	}
+
+	queue := h.batchTaskManager.CreateBatchQueue(validTasks)
+	c.JSON(http.StatusOK, gin.H{
+		"queueId": queue.ID,
+		"queue":   queue,
+	})
+}
+
+// GetBatchQueue 获取批量任务队列
+func (h *AgentHandler) GetBatchQueue(c *gin.Context) {
+	queueID := c.Param("queueId")
+	queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"queue": queue})
+}
+
+// ListBatchQueues 列出所有批量任务队列
+func (h *AgentHandler) ListBatchQueues(c *gin.Context) {
+	queues := h.batchTaskManager.GetAllQueues()
+	c.JSON(http.StatusOK, gin.H{"queues": queues})
+}
+
+// StartBatchQueue 开始执行批量任务队列
+func (h *AgentHandler) StartBatchQueue(c *gin.Context) {
+	queueID := c.Param("queueId")
+	queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+
+	if queue.Status != "pending" && queue.Status != "paused" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "队列状态不允许启动"})
+		return
+	}
+
+	// 在后台执行批量任务
+	go h.executeBatchQueue(queueID)
+
+	h.batchTaskManager.UpdateQueueStatus(queueID, "running")
+	c.JSON(http.StatusOK, gin.H{"message": "批量任务已开始执行", "queueId": queueID})
+}
+
+// CancelBatchQueue 取消批量任务队列
+func (h *AgentHandler) CancelBatchQueue(c *gin.Context) {
+	queueID := c.Param("queueId")
+	success := h.batchTaskManager.CancelQueue(queueID)
+	if !success {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在或无法取消"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "批量任务已取消"})
+}
+
+// DeleteBatchQueue 删除批量任务队列
+func (h *AgentHandler) DeleteBatchQueue(c *gin.Context) {
+	queueID := c.Param("queueId")
+	success := h.batchTaskManager.DeleteQueue(queueID)
+	if !success {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "批量任务队列已删除"})
+}
+
+// UpdateBatchTask 更新批量任务消息
+func (h *AgentHandler) UpdateBatchTask(c *gin.Context) {
+	queueID := c.Param("queueId")
+	taskID := c.Param("taskId")
+
+	var req struct {
+		Message string `json:"message" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数: " + err.Error()})
+		return
+	}
+
+	if req.Message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务消息不能为空"})
+		return
+	}
+
+	err := h.batchTaskManager.UpdateTaskMessage(queueID, taskID, req.Message)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 返回更新后的队列信息
+	queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "任务已更新", "queue": queue})
+}
+
+// AddBatchTask 添加任务到批量任务队列
+func (h *AgentHandler) AddBatchTask(c *gin.Context) {
+	queueID := c.Param("queueId")
+
+	var req struct {
+		Message string `json:"message" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数: " + err.Error()})
+		return
+	}
+
+	if req.Message == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "任务消息不能为空"})
+		return
+	}
+
+	task, err := h.batchTaskManager.AddTaskToQueue(queueID, req.Message)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 返回更新后的队列信息
+	queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "任务已添加", "task": task, "queue": queue})
+}
+
+// DeleteBatchTask 删除批量任务
+func (h *AgentHandler) DeleteBatchTask(c *gin.Context) {
+	queueID := c.Param("queueId")
+	taskID := c.Param("taskId")
+
+	err := h.batchTaskManager.DeleteTask(queueID, taskID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 返回更新后的队列信息
+	queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "任务已删除", "queue": queue})
+}
+
+// executeBatchQueue 执行批量任务队列
+func (h *AgentHandler) executeBatchQueue(queueID string) {
+	h.logger.Info("开始执行批量任务队列", zap.String("queueId", queueID))
+
+	for {
+		// 检查队列状态
+		queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+		if !exists || queue.Status == "cancelled" || queue.Status == "completed" {
+			break
+		}
+
+		// 获取下一个任务
+		task, hasNext := h.batchTaskManager.GetNextTask(queueID)
+		if !hasNext {
+			// 所有任务完成
+			h.batchTaskManager.UpdateQueueStatus(queueID, "completed")
+			h.logger.Info("批量任务队列执行完成", zap.String("queueId", queueID))
+			break
+		}
+
+		// 更新任务状态为运行中
+		h.batchTaskManager.UpdateTaskStatus(queueID, task.ID, "running", "", "")
+
+		// 创建新对话
+		title := safeTruncateString(task.Message, 50)
+		conv, err := h.db.CreateConversation(title)
+		var conversationID string
+		if err != nil {
+			h.logger.Error("创建对话失败", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.Error(err))
+			h.batchTaskManager.UpdateTaskStatus(queueID, task.ID, "failed", "", "创建对话失败: "+err.Error())
+			h.batchTaskManager.MoveToNextTask(queueID)
+			continue
+		}
+		conversationID = conv.ID
+
+		// 保存conversationId到任务中（即使是运行中状态也要保存，以便查看对话）
+		h.batchTaskManager.UpdateTaskStatusWithConversationID(queueID, task.ID, "running", "", "", conversationID)
+
+		// 保存用户消息
+		_, err = h.db.AddMessage(conversationID, "user", task.Message, nil)
+		if err != nil {
+			h.logger.Error("保存用户消息失败", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.String("conversationId", conversationID), zap.Error(err))
+		}
+
+		// 执行任务
+		h.logger.Info("执行批量任务", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.String("message", task.Message), zap.String("conversationId", conversationID))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		result, err := h.agent.AgentLoopWithConversationID(ctx, task.Message, []agent.ChatMessage{}, conversationID)
+		cancel()
+
+		if err != nil {
+			h.logger.Error("批量任务执行失败", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.String("conversationId", conversationID), zap.Error(err))
+			h.batchTaskManager.UpdateTaskStatus(queueID, task.ID, "failed", "", err.Error())
+		} else {
+			h.logger.Info("批量任务执行成功", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.String("conversationId", conversationID))
+
+			// 保存助手回复
+			_, err = h.db.AddMessage(conversationID, "assistant", result.Response, result.MCPExecutionIDs)
+			if err != nil {
+				h.logger.Error("保存助手消息失败", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.String("conversationId", conversationID), zap.Error(err))
+			}
+
+			// 保存ReAct数据
+			if result.LastReActInput != "" || result.LastReActOutput != "" {
+				if err := h.db.SaveReActData(conversationID, result.LastReActInput, result.LastReActOutput); err != nil {
+					h.logger.Warn("保存ReAct数据失败", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.Error(err))
+				} else {
+					h.logger.Info("已保存ReAct数据", zap.String("queueId", queueID), zap.String("taskId", task.ID), zap.String("conversationId", conversationID))
+				}
+			}
+
+			// 保存结果
+			h.batchTaskManager.UpdateTaskStatusWithConversationID(queueID, task.ID, "completed", result.Response, "", conversationID)
+		}
+
+		// 移动到下一个任务
+		h.batchTaskManager.MoveToNextTask(queueID)
+
+		// 检查是否被取消
+		queue, _ = h.batchTaskManager.GetBatchQueue(queueID)
+		if queue.Status == "cancelled" {
+			break
+		}
+	}
 }
 
 // loadHistoryFromReActData 从保存的ReAct数据恢复历史消息上下文

@@ -189,6 +189,32 @@ func (db *DB) initTables() error {
 		FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 	);`
 
+	// 创建批量任务队列表
+	createBatchTaskQueuesTable := `
+	CREATE TABLE IF NOT EXISTS batch_task_queues (
+		id TEXT PRIMARY KEY,
+		status TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		started_at DATETIME,
+		completed_at DATETIME,
+		current_index INTEGER NOT NULL DEFAULT 0
+	);`
+
+	// 创建批量任务表
+	createBatchTasksTable := `
+	CREATE TABLE IF NOT EXISTS batch_tasks (
+		id TEXT PRIMARY KEY,
+		queue_id TEXT NOT NULL,
+		message TEXT NOT NULL,
+		conversation_id TEXT,
+		status TEXT NOT NULL,
+		started_at DATETIME,
+		completed_at DATETIME,
+		error TEXT,
+		result TEXT,
+		FOREIGN KEY (queue_id) REFERENCES batch_task_queues(id) ON DELETE CASCADE
+	);`
+
 	// 创建索引
 	createIndexes := `
 	CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
@@ -212,6 +238,8 @@ func (db *DB) initTables() error {
 	CREATE INDEX IF NOT EXISTS idx_vulnerabilities_severity ON vulnerabilities(severity);
 	CREATE INDEX IF NOT EXISTS idx_vulnerabilities_status ON vulnerabilities(status);
 	CREATE INDEX IF NOT EXISTS idx_vulnerabilities_created_at ON vulnerabilities(created_at);
+	CREATE INDEX IF NOT EXISTS idx_batch_tasks_queue_id ON batch_tasks(queue_id);
+	CREATE INDEX IF NOT EXISTS idx_batch_task_queues_created_at ON batch_task_queues(created_at);
 	`
 
 	if _, err := db.Exec(createConversationsTable); err != nil {
@@ -256,6 +284,14 @@ func (db *DB) initTables() error {
 
 	if _, err := db.Exec(createVulnerabilitiesTable); err != nil {
 		return fmt.Errorf("创建vulnerabilities表失败: %w", err)
+	}
+
+	if _, err := db.Exec(createBatchTaskQueuesTable); err != nil {
+		return fmt.Errorf("创建batch_task_queues表失败: %w", err)
+	}
+
+	if _, err := db.Exec(createBatchTasksTable); err != nil {
+		return fmt.Errorf("创建batch_tasks表失败: %w", err)
 	}
 
 	// 为已有表添加新字段（如果不存在）- 必须在创建索引之前

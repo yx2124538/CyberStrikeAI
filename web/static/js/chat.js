@@ -3778,7 +3778,18 @@ let pendingGroupMappings = {}; // 待保留的分组映射（用于处理后端A
 async function loadGroups() {
     try {
         const response = await apiFetch('/api/groups');
-        groupsCache = await response.json();
+        if (!response.ok) {
+            groupsCache = [];
+            return;
+        }
+        const data = await response.json();
+        // 确保groupsCache是有效数组
+        if (Array.isArray(data)) {
+            groupsCache = data;
+        } else {
+            // 如果返回的不是数组，使用空数组（不打印警告，因为可能后端返回了错误格式但我们要优雅处理）
+            groupsCache = [];
+        }
 
         const groupsList = document.getElementById('conversation-groups-list');
         if (!groupsList) return;
@@ -4723,13 +4734,20 @@ async function loadConversationGroupMapping() {
             groups = groupsCache;
         } else {
             const response = await apiFetch('/api/groups');
-            groups = await response.json();
-        }
-        
-        // 确保groups是有效数组
-        if (!Array.isArray(groups)) {
-            console.warn('loadConversationGroupMapping: groups不是有效数组，使用空数组');
-            groups = [];
+            if (!response.ok) {
+                // 如果API请求失败，使用空数组，不打印警告（这是正常错误处理）
+                groups = [];
+            } else {
+                groups = await response.json();
+                // 确保groups是有效数组，只在真正异常时才打印警告
+                if (!Array.isArray(groups)) {
+                    // 只在返回的不是数组且不是null/undefined时才打印警告（可能是后端返回了错误格式）
+                    if (groups !== null && groups !== undefined) {
+                        console.warn('loadConversationGroupMapping: groups不是有效数组，使用空数组', groups);
+                    }
+                    groups = [];
+                }
+            }
         }
         
         // 保存待保留的映射

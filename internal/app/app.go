@@ -423,6 +423,18 @@ func setupRoutes(
 		// Agent Loop 取消与任务列表
 		protected.POST("/agent-loop/cancel", agentHandler.CancelAgentLoop)
 		protected.GET("/agent-loop/tasks", agentHandler.ListAgentTasks)
+		protected.GET("/agent-loop/tasks/completed", agentHandler.ListCompletedTasks)
+
+		// 批量任务管理
+		protected.POST("/batch-tasks", agentHandler.CreateBatchQueue)
+		protected.GET("/batch-tasks", agentHandler.ListBatchQueues)
+		protected.GET("/batch-tasks/:queueId", agentHandler.GetBatchQueue)
+		protected.POST("/batch-tasks/:queueId/start", agentHandler.StartBatchQueue)
+		protected.POST("/batch-tasks/:queueId/cancel", agentHandler.CancelBatchQueue)
+		protected.DELETE("/batch-tasks/:queueId", agentHandler.DeleteBatchQueue)
+		protected.PUT("/batch-tasks/:queueId/tasks/:taskId", agentHandler.UpdateBatchTask)
+		protected.POST("/batch-tasks/:queueId/tasks", agentHandler.AddBatchTask)
+		protected.DELETE("/batch-tasks/:queueId/tasks/:taskId", agentHandler.DeleteBatchTask)
 
 		// 对话历史
 		protected.POST("/conversations", conversationHandler.CreateConversation)

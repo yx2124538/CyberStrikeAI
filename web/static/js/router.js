@@ -3,14 +3,37 @@ let currentPage = 'chat';
 
 // 初始化路由
 function initRouter() {
-    // 默认显示对话页面
-    switchPage('chat');
-    
     // 从URL hash读取页面（如果有）
     const hash = window.location.hash.slice(1);
-    if (hash && ['chat', 'vulnerabilities', 'mcp-monitor', 'mcp-management', 'knowledge-management', 'knowledge-retrieval-logs', 'settings'].includes(hash)) {
-        switchPage(hash);
+    if (hash) {
+        const hashParts = hash.split('?');
+        const pageId = hashParts[0];
+        if (pageId && ['chat', 'vulnerabilities', 'mcp-monitor', 'mcp-management', 'knowledge-management', 'knowledge-retrieval-logs', 'settings', 'tasks'].includes(pageId)) {
+            switchPage(pageId);
+            
+            // 如果是chat页面且带有conversation参数，加载对应对话
+            if (pageId === 'chat' && hashParts.length > 1) {
+                const params = new URLSearchParams(hashParts[1]);
+                const conversationId = params.get('conversation');
+                if (conversationId) {
+                    setTimeout(() => {
+                        // 尝试多种方式调用loadConversation
+                        if (typeof loadConversation === 'function') {
+                            loadConversation(conversationId);
+                        } else if (typeof window.loadConversation === 'function') {
+                            window.loadConversation(conversationId);
+                        } else {
+                            console.warn('loadConversation function not found');
+                        }
+                    }, 500);
+                }
+            }
+            return;
+        }
     }
+    
+    // 默认显示对话页面
+    switchPage('chat');
 }
 
 // 切换页面
@@ -178,6 +201,12 @@ function initPage(pageId) {
         case 'chat':
             // 对话页面已由chat.js初始化
             break;
+        case 'tasks':
+            // 初始化任务管理页面
+            if (typeof initTasksPage === 'function') {
+                initTasksPage();
+            }
+            break;
         case 'mcp-monitor':
             // 初始化监控面板
             if (typeof refreshMonitorPanel === 'function') {
@@ -211,6 +240,11 @@ function initPage(pageId) {
             }
             break;
     }
+    
+    // 清理其他页面的定时器
+    if (pageId !== 'tasks' && typeof cleanupTasksPage === 'function') {
+        cleanupTasksPage();
+    }
 }
 
 // 页面加载完成后初始化路由
@@ -221,10 +255,48 @@ document.addEventListener('DOMContentLoaded', function() {
     // 监听hash变化
     window.addEventListener('hashchange', function() {
         const hash = window.location.hash.slice(1);
-        if (hash && ['chat', 'vulnerabilities', 'mcp-monitor', 'mcp-management', 'knowledge-management', 'knowledge-retrieval-logs', 'settings'].includes(hash)) {
-            switchPage(hash);
+        // 处理带参数的hash（如 chat?conversation=xxx）
+        const hashParts = hash.split('?');
+        const pageId = hashParts[0];
+        
+        if (pageId && ['chat', 'tasks', 'vulnerabilities', 'mcp-monitor', 'mcp-management', 'knowledge-management', 'knowledge-retrieval-logs', 'settings'].includes(pageId)) {
+            switchPage(pageId);
+            
+            // 如果是chat页面且带有conversation参数，加载对应对话
+            if (pageId === 'chat' && hashParts.length > 1) {
+                const params = new URLSearchParams(hashParts[1]);
+                const conversationId = params.get('conversation');
+                if (conversationId) {
+                    setTimeout(() => {
+                        // 尝试多种方式调用loadConversation
+                        if (typeof loadConversation === 'function') {
+                            loadConversation(conversationId);
+                        } else if (typeof window.loadConversation === 'function') {
+                            window.loadConversation(conversationId);
+                        } else {
+                            console.warn('loadConversation function not found');
+                        }
+                    }, 200);
+                }
+            }
         }
     });
+    
+    // 页面加载时也检查hash参数
+    const hash = window.location.hash.slice(1);
+    if (hash) {
+        const hashParts = hash.split('?');
+        const pageId = hashParts[0];
+        if (pageId === 'chat' && hashParts.length > 1) {
+            const params = new URLSearchParams(hashParts[1]);
+            const conversationId = params.get('conversation');
+            if (conversationId && typeof loadConversation === 'function') {
+                setTimeout(() => {
+                    loadConversation(conversationId);
+                }, 500);
+            }
+        }
+    }
 });
 
 // 切换侧边栏折叠/展开

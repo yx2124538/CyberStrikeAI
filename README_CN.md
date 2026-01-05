@@ -341,6 +341,10 @@ CyberStrikeAI/
 - 2025-11-14 —— 工具检索 O(1)、执行记录清理、数据库分页优化。
 - 2025-11-13 —— Web 鉴权、Settings 面板与 MCP stdio 模式发布。
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Ed1s0nZ/CyberStrikeAI&type=date&legend=top-left)]
+
 ## 404星链计划 
 <img src="./img/404StarLinkLogo.png" width="30%">
 

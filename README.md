@@ -346,7 +346,7 @@ Build an attack chain for the latest engagement and export the node list with se
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Ed1s0nZ/CyberStrikeAI&type=date&legend=top-left)](https://www.star-history.com/#Ed1s0nZ/CyberStrikeAI&type=date&legend=top-left)
+![Star History Chart](https://api.star-history.com/svg?repos=Ed1s0nZ/CyberStrikeAI&type=date&legend=top-left)
 
 ## 404Starlink 
 

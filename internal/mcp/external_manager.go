@@ -603,6 +603,7 @@ func (m *ExternalMCPManager) createClient(serverCfg config.ExternalMCPServerConf
 		if serverCfg.Command != "" {
 			transport = "stdio"
 		} else if serverCfg.URL != "" {
+			// 默认使用http，但可以通过transport字段指定sse
 			transport = "http"
 		} else {
 			return nil
@@ -620,6 +621,11 @@ func (m *ExternalMCPManager) createClient(serverCfg config.ExternalMCPServerConf
 			return nil
 		}
 		return NewStdioMCPClient(serverCfg.Command, serverCfg.Args, timeout, m.logger)
+	case "sse":
+		if serverCfg.URL == "" {
+			return nil
+		}
+		return NewSSEMCPClient(serverCfg.URL, timeout, m.logger)
 	default:
 		return nil
 	}
@@ -653,6 +659,8 @@ func (m *ExternalMCPManager) setClientStatus(client ExternalMCPClient, status st
 	case *HTTPMCPClient:
 		c.setStatus(status)
 	case *StdioMCPClient:
+		c.setStatus(status)
+	case *SSEMCPClient:
 		c.setStatus(status)
 	}
 }

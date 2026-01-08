@@ -32,7 +32,7 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 ## 特性速览
 
 - 🤖 兼容 OpenAI/DeepSeek/Claude 等模型的智能决策引擎
-- 🔌 原生 MCP 协议，支持 HTTP / stdio 以及外部 MCP 接入
+- 🔌 原生 MCP 协议，支持 HTTP / stdio / SSE 传输模式以及外部 MCP 接入
 - 🧰 100+ 现成工具模版 + YAML 扩展能力
 - 📄 大结果分页、压缩与全文检索
 - 🔗 攻击链可视化、风险打分与步骤回放
@@ -147,7 +147,7 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 ### MCP 全场景
 - **Web 模式**：自带 HTTP MCP 服务供前端调用。
 - **MCP stdio 模式**：`go run cmd/mcp-stdio/main.go` 可接入 Cursor/命令行。
-- **外部 MCP 联邦**：在设置中注册第三方 MCP（HTTP/stdio），按需启停并实时查看调用统计与健康度。
+- **外部 MCP 联邦**：在设置中注册第三方 MCP（HTTP/stdio/SSE），按需启停并实时查看调用统计与健康度。
 
 #### MCP stdio 快速集成
 1. **编译可执行文件**（在项目根目录执行）：
@@ -186,6 +186,62 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
      }
    }
    ```
+
+#### 外部 MCP 联邦（HTTP/stdio/SSE）
+CyberStrikeAI 支持通过三种传输模式连接外部 MCP 服务器：
+- **HTTP 模式** – 通过 HTTP POST 进行传统的请求/响应通信
+- **stdio 模式** – 通过标准输入/输出进行进程间通信
+- **SSE 模式** – 通过 Server-Sent Events 实现实时流式通信
+
+添加外部 MCP 服务器：
+1. 打开 Web 界面，进入 **设置 → 外部MCP**。
+2. 点击 **添加外部MCP**，以 JSON 格式提供配置：
+
+   **HTTP 模式示例：**
+   ```json
+   {
+     "my-http-mcp": {
+       "transport": "http",
+       "url": "http://127.0.0.1:8081/mcp",
+       "description": "HTTP MCP 服务器",
+       "timeout": 30
+     }
+   }
+   ```
+
+   **stdio 模式示例：**
+   ```json
+   {
+     "my-stdio-mcp": {
+       "command": "python3",
+       "args": ["/path/to/mcp-server.py"],
+       "description": "stdio MCP 服务器",
+       "timeout": 30
+     }
+   }
+   ```
+
+   **SSE 模式示例：**
+   ```json
+   {
+     "my-sse-mcp": {
+       "transport": "sse",
+       "url": "http://127.0.0.1:8082/sse",
+       "description": "SSE MCP 服务器",
+       "timeout": 30
+     }
+   }
+   ```
+
+3. 点击 **保存**，然后点击 **启动** 连接服务器。
+4. 实时监控连接状态、工具数量和健康度。
+
+**SSE 模式优势：**
+- 通过 Server-Sent Events 实现实时双向通信
+- 适用于需要持续数据流的场景
+- 对于基于推送的通知，延迟更低
+
+可在 `cmd/test-sse-mcp-server/` 目录找到用于验证的测试 SSE MCP 服务器。
 
 
 ### 知识库功能
@@ -326,6 +382,7 @@ CyberStrikeAI/
 ```
 
 ## Changelog（近期）
+- 2026-01-08 —— 新增 SSE（Server-Sent Events）传输模式支持，外部 MCP 联邦现支持 HTTP、stdio 和 SSE 三种模式。SSE 模式支持实时流式通信，适用于基于推送的场景。
 - 2026-01-01 —— 新增批量任务管理功能：支持创建任务队列，批量添加多个任务，执行前可编辑或删除任务，然后依次顺序执行。每个任务作为独立对话运行，支持状态跟踪（待执行/执行中/已完成/失败/已取消），所有队列和任务数据持久化存储到数据库。
 - 2025-12-25 —— 新增漏洞管理功能：完整的漏洞 CRUD 操作，支持跟踪测试过程中发现的漏洞。支持严重程度分级（严重/高/中/低/信息）、状态流转（待确认/已确认/已修复/误报）、按对话/严重程度/状态过滤，以及统计看板。
 - 2025-12-25 —— 新增对话分组功能：支持创建分组、将对话移动到分组、分组置顶、重命名和删除等操作，所有分组数据持久化存储到数据库。

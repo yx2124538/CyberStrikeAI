@@ -1158,6 +1158,14 @@ function loadExternalMCPExample() {
             ],
             description: "示例描述",
             timeout: 300
+        },
+        "cyberstrike-ai-http": {
+            transport: "http",
+            url: "http://127.0.0.1:8081/mcp"
+        },
+        "cyberstrike-ai-sse": {
+            transport: "sse",
+            url: "http://127.0.0.1:8081/mcp/sse"
         }
     };
     
@@ -1231,7 +1239,7 @@ async function saveExternalMCP() {
         // 验证配置内容
         const transport = config.transport || (config.command ? 'stdio' : config.url ? 'http' : '');
         if (!transport) {
-            errorDiv.textContent = `配置错误: "${name}" 需要指定command（stdio模式）或url（http模式）`;
+            errorDiv.textContent = `配置错误: "${name}" 需要指定command（stdio模式）或url（http/sse模式）`;
             errorDiv.style.display = 'block';
             jsonTextarea.classList.add('error');
             return;
@@ -1246,6 +1254,13 @@ async function saveExternalMCP() {
         
         if (transport === 'http' && !config.url) {
             errorDiv.textContent = `配置错误: "${name}" http模式需要url字段`;
+            errorDiv.style.display = 'block';
+            jsonTextarea.classList.add('error');
+            return;
+        }
+        
+        if (transport === 'sse' && !config.url) {
+            errorDiv.textContent = `配置错误: "${name}" sse模式需要url字段`;
             errorDiv.style.display = 'block';
             jsonTextarea.classList.add('error');
             return;

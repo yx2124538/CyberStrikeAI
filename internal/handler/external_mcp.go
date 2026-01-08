@@ -324,7 +324,7 @@ func (h *ExternalMCPHandler) validateConfig(cfg config.ExternalMCPServerConfig) 
 		} else if cfg.URL != "" {
 			transport = "http"
 		} else {
-			return fmt.Errorf("需要指定command（stdio模式）或url（http模式）")
+			return fmt.Errorf("需要指定command（stdio模式）或url（http/sse模式）")
 		}
 	}
 	
@@ -337,8 +337,12 @@ func (h *ExternalMCPHandler) validateConfig(cfg config.ExternalMCPServerConfig) 
 		if cfg.Command == "" {
 			return fmt.Errorf("stdio模式需要command")
 		}
+	case "sse":
+		if cfg.URL == "" {
+			return fmt.Errorf("SSE模式需要URL")
+		}
 	default:
-		return fmt.Errorf("不支持的传输模式: %s，支持的模式: http, stdio", transport)
+		return fmt.Errorf("不支持的传输模式: %s，支持的模式: http, stdio, sse", transport)
 	}
 	
 	return nil

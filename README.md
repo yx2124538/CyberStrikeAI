@@ -33,7 +33,7 @@ CyberStrikeAI is an **AI-native security testing platform** built in Go. It inte
 ## Highlights
 
 - 🤖 AI decision engine with OpenAI-compatible models (GPT, Claude, DeepSeek, etc.)
-- 🔌 Native MCP implementation with HTTP/stdio transports and external MCP federation
+- 🔌 Native MCP implementation with HTTP/stdio/SSE transports and external MCP federation
 - 🧰 100+ prebuilt tool recipes + YAML-based extension system
 - 📄 Large-result pagination, compression, and searchable archives
 - 🔗 Attack-chain graph, risk scoring, and step-by-step replay
@@ -149,7 +149,7 @@ CyberStrikeAI ships with 100+ curated tools covering the whole kill chain:
 ### MCP Everywhere
 - **Web mode** – ships with HTTP MCP server automatically consumed by the UI.
 - **MCP stdio mode** – `go run cmd/mcp-stdio/main.go` exposes the agent to Cursor/CLI.
-- **External MCP federation** – register third-party MCP servers (HTTP or stdio) from the UI, toggle them per engagement, and monitor their health and call volume in real time.
+- **External MCP federation** – register third-party MCP servers (HTTP, stdio, or SSE) from the UI, toggle them per engagement, and monitor their health and call volume in real time.
 
 #### MCP stdio quick start
 1. **Build the binary** (run from the project root):
@@ -188,6 +188,62 @@ CyberStrikeAI ships with 100+ curated tools covering the whole kill chain:
      }
    }
    ```
+
+#### External MCP federation (HTTP/stdio/SSE)
+CyberStrikeAI supports connecting to external MCP servers via three transport modes:
+- **HTTP mode** – traditional request/response over HTTP POST
+- **stdio mode** – process-based communication via standard input/output
+- **SSE mode** – Server-Sent Events for real-time streaming communication
+
+To add an external MCP server:
+1. Open the Web UI and navigate to **Settings → External MCP**.
+2. Click **Add External MCP** and provide the configuration in JSON format:
+
+   **HTTP mode example:**
+   ```json
+   {
+     "my-http-mcp": {
+       "transport": "http",
+       "url": "http://127.0.0.1:8081/mcp",
+       "description": "HTTP MCP server",
+       "timeout": 30
+     }
+   }
+   ```
+
+   **stdio mode example:**
+   ```json
+   {
+     "my-stdio-mcp": {
+       "command": "python3",
+       "args": ["/path/to/mcp-server.py"],
+       "description": "stdio MCP server",
+       "timeout": 30
+     }
+   }
+   ```
+
+   **SSE mode example:**
+   ```json
+   {
+     "my-sse-mcp": {
+       "transport": "sse",
+       "url": "http://127.0.0.1:8082/sse",
+       "description": "SSE MCP server",
+       "timeout": 30
+     }
+   }
+   ```
+
+3. Click **Save** and then **Start** to connect to the server.
+4. Monitor the connection status, tool count, and health in real time.
+
+**SSE mode benefits:**
+- Real-time bidirectional communication via Server-Sent Events
+- Suitable for scenarios requiring continuous data streaming
+- Lower latency for push-based notifications
+
+A test SSE MCP server is available at `cmd/test-sse-mcp-server/` for validation purposes.
 
 ### Knowledge Base
 - **Vector search** – AI agent can automatically search the knowledge base for relevant security knowledge during conversations using the `search_knowledge_base` tool.
@@ -328,6 +384,7 @@ Build an attack chain for the latest engagement and export the node list with se
 
 ## Changelog (Recent)
 
+- 2026-01-08 – Added SSE (Server-Sent Events) transport mode support for external MCP servers. External MCP federation now supports HTTP, stdio, and SSE modes. SSE mode enables real-time streaming communication for push-based scenarios.
 - 2026-01-01 – Added batch task management feature: create task queues with multiple tasks, add/edit/delete tasks before execution, and execute them sequentially. Each task runs as a separate conversation with status tracking (pending/running/completed/failed/cancelled). All queues and tasks are persisted in the database.
 - 2025-12-25 – Added vulnerability management feature: full CRUD operations for tracking vulnerabilities discovered during testing. Supports severity levels (critical/high/medium/low/info), status workflow (open/confirmed/fixed/false_positive), filtering by conversation/severity/status, and comprehensive statistics dashboard.
 - 2025-12-25 – Added conversation grouping feature: organize conversations into groups, pin groups to top, rename/delete groups via context menu. All group data is persisted in the database.

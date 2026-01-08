@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 
@@ -467,6 +469,410 @@ func (c *StdioMCPClient) Close() error {
 	if c.cmd != nil {
 		c.cmd.Process.Kill()
 		c.cmd.Wait()
+	}
+
+	c.setStatus("disconnected")
+	return nil
+}
+
+// SSEMCPClient SSE模式的MCP客户端
+type SSEMCPClient struct {
+	url         string
+	timeout     time.Duration
+	client      *http.Client
+	logger      *zap.Logger
+	mu          sync.RWMutex
+	status      string // "disconnected", "connecting", "connected", "error"
+	sseConn     io.ReadCloser
+	sseCancel   context.CancelFunc
+	requestID   int64
+	responses   map[string]chan *Message
+	responsesMu sync.Mutex
+	ctx         context.Context
+}
+
+// NewSSEMCPClient 创建SSE模式的MCP客户端
+func NewSSEMCPClient(url string, timeout time.Duration, logger *zap.Logger) *SSEMCPClient {
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	return &SSEMCPClient{
+		url:       url,
+		timeout:   timeout,
+		client:    &http.Client{Timeout: timeout},
+		logger:    logger,
+		status:    "disconnected",
+		responses: make(map[string]chan *Message),
+		ctx:       ctx,
+		sseCancel: cancel,
+	}
+}
+
+func (c *SSEMCPClient) setStatus(status string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.status = status
+}
+
+func (c *SSEMCPClient) GetStatus() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.status
+}
+
+func (c *SSEMCPClient) IsConnected() bool {
+	return c.GetStatus() == "connected"
+}
+
+func (c *SSEMCPClient) Initialize(ctx context.Context) error {
+	c.setStatus("connecting")
+
+	// 建立SSE连接
+	if err := c.connectSSE(); err != nil {
+		c.setStatus("error")
+		return fmt.Errorf("建立SSE连接失败: %w", err)
+	}
+
+	// 启动响应读取goroutine
+	go c.readSSEResponses()
+
+	// 发送初始化请求
+	req := Message{
+		ID:      MessageID{value: "1"},
+		Method:  "initialize",
+		Version: "2.0",
+	}
+
+	params := InitializeRequest{
+		ProtocolVersion: ProtocolVersion,
+		Capabilities:    make(map[string]interface{}),
+		ClientInfo: ClientInfo{
+			Name:    "CyberStrikeAI",
+			Version: "1.0.0",
+		},
+	}
+
+	paramsJSON, _ := json.Marshal(params)
+	req.Params = paramsJSON
+
+	_, err := c.sendRequest(ctx, &req)
+	if err != nil {
+		c.setStatus("error")
+		c.Close()
+		return fmt.Errorf("初始化失败: %w", err)
+	}
+
+	c.setStatus("connected")
+	return nil
+}
+
+func (c *SSEMCPClient) connectSSE() error {
+	// 建立SSE连接（GET请求，Accept: text/event-stream）
+	// SSE连接需要长连接，使用无超时的客户端
+	sseClient := &http.Client{
+		Timeout: 0, // 无超时，用于长连接
+	}
+
+	req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, c.url, nil)
+	if err != nil {
+		return fmt.Errorf("创建SSE请求失败: %w", err)
+	}
+
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	resp, err := sseClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("SSE连接失败: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return fmt.Errorf("SSE连接失败，状态码: %d", resp.StatusCode)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "text/event-stream") {
+		resp.Body.Close()
+		return fmt.Errorf("服务器不支持SSE，Content-Type: %s", contentType)
+	}
+
+	c.sseConn = resp.Body
+	return nil
+}
+
+func (c *SSEMCPClient) readSSEResponses() {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("读取SSE响应时发生panic", zap.Any("error", r))
+		}
+		if c.sseConn != nil {
+			c.sseConn.Close()
+		}
+		c.setStatus("disconnected")
+	}()
+
+	if c.sseConn == nil {
+		return
+	}
+
+	scanner := &sseScanner{reader: bufio.NewReader(c.sseConn)}
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		default:
+		}
+
+		// 读取SSE事件
+		event, err := scanner.readEvent()
+		if err != nil {
+			if err == io.EOF {
+				c.setStatus("disconnected")
+				return
+			}
+			c.logger.Error("读取SSE数据失败", zap.Error(err))
+			return
+		}
+
+		if event == nil || len(event.Data) == 0 {
+			continue
+		}
+
+		// 解析JSON消息
+		var msg Message
+		if err := json.Unmarshal(event.Data, &msg); err != nil {
+			c.logger.Warn("解析SSE消息失败", zap.Error(err), zap.String("data", string(event.Data)))
+			continue
+		}
+
+		// 处理响应
+		id := msg.ID.String()
+		c.responsesMu.Lock()
+		if ch, ok := c.responses[id]; ok {
+			select {
+			case ch <- &msg:
+			default:
+			}
+			delete(c.responses, id)
+		}
+		c.responsesMu.Unlock()
+	}
+}
+
+// sseEvent SSE事件
+type sseEvent struct {
+	Event string
+	Data  []byte
+	ID    string
+	Retry int
+}
+
+// sseScanner SSE扫描器
+type sseScanner struct {
+	reader *bufio.Reader
+}
+
+func (s *sseScanner) readEvent() (*sseEvent, error) {
+	event := &sseEvent{}
+
+	for {
+		line, err := s.reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+
+		line = strings.TrimRight(line, "\r\n")
+
+		// 空行表示事件结束
+		if len(line) == 0 {
+			if len(event.Data) > 0 {
+				return event, nil
+			}
+			continue
+		}
+
+		// 解析SSE行
+		if strings.HasPrefix(line, "event: ") {
+			event.Event = strings.TrimSpace(line[7:])
+		} else if strings.HasPrefix(line, "data: ") {
+			data := []byte(strings.TrimSpace(line[6:]))
+			if len(event.Data) > 0 {
+				event.Data = append(event.Data, '\n')
+			}
+			event.Data = append(event.Data, data...)
+		} else if strings.HasPrefix(line, "id: ") {
+			event.ID = strings.TrimSpace(line[4:])
+		} else if strings.HasPrefix(line, "retry: ") {
+			fmt.Sscanf(line[7:], "%d", &event.Retry)
+		}
+	}
+}
+
+func (c *SSEMCPClient) sendRequest(ctx context.Context, msg *Message) (*Message, error) {
+	if c.sseConn == nil {
+		return nil, fmt.Errorf("SSE连接未建立")
+	}
+
+	id := msg.ID.String()
+	if id == "" {
+		c.mu.Lock()
+		c.requestID++
+		id = fmt.Sprintf("%d", c.requestID)
+		msg.ID = MessageID{value: id}
+		c.mu.Unlock()
+	}
+
+	// 创建响应通道
+	responseCh := make(chan *Message, 1)
+	c.responsesMu.Lock()
+	c.responses[id] = responseCh
+	c.responsesMu.Unlock()
+
+	// 通过HTTP POST发送请求（SSE用于接收响应，请求通过POST发送）
+	body, err := json.Marshal(msg)
+	if err != nil {
+		c.responsesMu.Lock()
+		delete(c.responses, id)
+		c.responsesMu.Unlock()
+		return nil, fmt.Errorf("序列化请求失败: %w", err)
+	}
+
+	// 使用POST请求发送消息（通常SSE服务器会提供两个端点：一个用于SSE，一个用于POST）
+	// 如果URL是SSE端点，尝试使用相同的URL但改为POST，或者使用URL + "/message"
+	postURL := c.url
+	if strings.HasSuffix(postURL, "/sse") {
+		postURL = strings.TrimSuffix(postURL, "/sse")
+		postURL += "/message"
+	} else if strings.HasSuffix(postURL, "/events") {
+		postURL = strings.TrimSuffix(postURL, "/events")
+		postURL += "/message"
+	} else if !strings.Contains(postURL, "/message") {
+		// 如果URL不包含/message，尝试添加
+		postURL = strings.TrimSuffix(postURL, "/")
+		postURL += "/message"
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, postURL, bytes.NewReader(body))
+	if err != nil {
+		c.responsesMu.Lock()
+		delete(c.responses, id)
+		c.responsesMu.Unlock()
+		return nil, fmt.Errorf("创建POST请求失败: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(httpReq)
+	if err != nil {
+		c.responsesMu.Lock()
+		delete(c.responses, id)
+		c.responsesMu.Unlock()
+		return nil, fmt.Errorf("发送POST请求失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 如果POST请求直接返回响应（非SSE模式），直接解析
+	if resp.StatusCode == http.StatusOK && resp.Header.Get("Content-Type") == "application/json" {
+		var mcpResp Message
+		if err := json.NewDecoder(resp.Body).Decode(&mcpResp); err != nil {
+			c.responsesMu.Lock()
+			delete(c.responses, id)
+			c.responsesMu.Unlock()
+			return nil, fmt.Errorf("解析响应失败: %w", err)
+		}
+
+		if mcpResp.Error != nil {
+			c.responsesMu.Lock()
+			delete(c.responses, id)
+			c.responsesMu.Unlock()
+			return nil, fmt.Errorf("MCP错误: %s (code: %d)", mcpResp.Error.Message, mcpResp.Error.Code)
+		}
+
+		return &mcpResp, nil
+	}
+
+	// 否则等待SSE响应
+	select {
+	case resp := <-responseCh:
+		if resp.Error != nil {
+			return nil, fmt.Errorf("MCP错误: %s (code: %d)", resp.Error.Message, resp.Error.Code)
+		}
+		return resp, nil
+	case <-ctx.Done():
+		c.responsesMu.Lock()
+		delete(c.responses, id)
+		c.responsesMu.Unlock()
+		return nil, ctx.Err()
+	case <-time.After(c.timeout):
+		c.responsesMu.Lock()
+		delete(c.responses, id)
+		c.responsesMu.Unlock()
+		return nil, fmt.Errorf("请求超时")
+	}
+}
+
+func (c *SSEMCPClient) ListTools(ctx context.Context) ([]Tool, error) {
+	req := Message{
+		ID:      MessageID{value: uuid.New().String()},
+		Method:  "tools/list",
+		Version: "2.0",
+	}
+
+	req.Params = json.RawMessage("{}")
+
+	resp, err := c.sendRequest(ctx, &req)
+	if err != nil {
+		return nil, fmt.Errorf("获取工具列表失败: %w", err)
+	}
+
+	var listResp ListToolsResponse
+	if err := json.Unmarshal(resp.Result, &listResp); err != nil {
+		return nil, fmt.Errorf("解析工具列表失败: %w", err)
+	}
+
+	return listResp.Tools, nil
+}
+
+func (c *SSEMCPClient) CallTool(ctx context.Context, name string, args map[string]interface{}) (*ToolResult, error) {
+	req := Message{
+		ID:      MessageID{value: uuid.New().String()},
+		Method:  "tools/call",
+		Version: "2.0",
+	}
+
+	callReq := CallToolRequest{
+		Name:      name,
+		Arguments: args,
+	}
+
+	paramsJSON, _ := json.Marshal(callReq)
+	req.Params = paramsJSON
+
+	resp, err := c.sendRequest(ctx, &req)
+	if err != nil {
+		return nil, fmt.Errorf("调用工具失败: %w", err)
+	}
+
+	var callResp CallToolResponse
+	if err := json.Unmarshal(resp.Result, &callResp); err != nil {
+		return nil, fmt.Errorf("解析工具调用结果失败: %w", err)
+	}
+
+	return &ToolResult{
+		Content: callResp.Content,
+		IsError: callResp.IsError,
+	}, nil
+}
+
+func (c *SSEMCPClient) Close() error {
+	c.sseCancel()
+
+	if c.sseConn != nil {
+		c.sseConn.Close()
+		c.sseConn = nil
 	}
 
 	c.setStatus("disconnected")

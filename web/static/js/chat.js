@@ -943,6 +943,8 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
                 detailBtn.innerHTML = `<span>调用 #${index + 1}</span>`;
                 detailBtn.onclick = () => showMCPDetail(execId);
                 buttonsContainer.appendChild(detailBtn);
+                // 异步获取工具名称并更新按钮文本
+                updateButtonWithToolName(detailBtn, execId, index + 1);
             });
         }
         
@@ -1230,6 +1232,23 @@ window.addEventListener('beforeunload', () => {
         saveChatDraft(chatInput.value);
     }
 });
+
+// 异步获取工具名称并更新按钮文本
+async function updateButtonWithToolName(button, executionId, index) {
+    try {
+        const response = await apiFetch(`/api/monitor/execution/${executionId}`);
+        if (response.ok) {
+            const exec = await response.json();
+            const toolName = exec.toolName || '未知工具';
+            // 格式化工具名称（如果是 name::toolName 格式，只显示 toolName 部分）
+            const displayToolName = toolName.includes('::') ? toolName.split('::')[1] : toolName;
+            button.querySelector('span').textContent = `${displayToolName} #${index}`;
+        }
+    } catch (error) {
+        // 如果获取失败，保持原有文本不变
+        console.error('获取工具名称失败:', error);
+    }
+}
 
 // 显示MCP调用详情
 async function showMCPDetail(executionId) {

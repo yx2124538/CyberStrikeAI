@@ -7742,29 +7742,30 @@ header {
     position: absolute;
     bottom: calc(100% + 8px);
     left: 0;
-    width: 320px;
+    width: 340px;
     max-width: calc(100vw - 32px);
     max-height: 60vh;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 16px;
+    padding: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
     z-index: 1000;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    animation: slideUp 0.3s ease-out;
+    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    backdrop-filter: blur(20px);
 }
 
 @keyframes slideUp {
     from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(8px) scale(0.98);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
@@ -7772,55 +7773,61 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 8px;
-    padding: 8px 4px;
-    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 10px;
+    padding: 10px 4px 12px 4px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     position: sticky;
     top: 0;
-    background: var(--bg-primary);
+    background: #ffffff;
     z-index: 10;
 }
 
 .role-selection-panel-title {
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #1a1a1a;
     margin: 0;
+    letter-spacing: -0.01em;
 }
 
 .role-selection-panel-close {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border: none;
     background: transparent;
-    border-radius: 4px;
+    border-radius: 8px;
     cursor: pointer;
-    color: var(--text-secondary);
-    transition: all 0.2s;
+    color: #666666;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     padding: 0;
 }
 
 .role-selection-panel-close:hover {
-    background: var(--bg-hover);
-    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.06);
+    color: #1a1a1a;
+    transform: rotate(90deg);
+}
+
+.role-selection-panel-close:active {
+    transform: rotate(90deg) scale(0.95);
 }
 
 .role-selection-list-main {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     /* 限制显示8个角色：每个角色约70px高度 + gap，8个角色约580px */
     max-height: 580px;
     overflow-y: auto;
-    padding-right: 4px;
+    padding-right: 6px;
     flex: 1;
 }
 
 .role-selection-list-main::-webkit-scrollbar {
-    width: 6px;
+    width: 8px;
 }
 
 .role-selection-list-main::-webkit-scrollbar-track {
@@ -7828,81 +7835,102 @@ header {
 }
 
 .role-selection-list-main::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.16);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
 }
 
 .role-selection-list-main::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.24);
+    background-clip: padding-box;
 }
 
 .role-selection-item-main {
     display: flex;
     flex-direction: row;
     align-items: flex-start;
-    gap: 10px;
-    padding: 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-primary);
+    gap: 12px;
+    padding: 12px;
+    border: 1.5px solid rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    background: #ffffff;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
 }
 
 .role-selection-item-main:hover {
-    background: var(--bg-secondary);
-    border-color: rgba(138, 43, 226, 0.3);
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.04) 0%, rgba(138, 43, 226, 0.02) 100%);
+    border-color: rgba(138, 43, 226, 0.2);
+    box-shadow: 0 2px 8px rgba(138, 43, 226, 0.08);
+    transform: translateY(-1px);
 }
 
 .role-selection-item-main.selected {
-    background: rgba(138, 43, 226, 0.1);
-    border-color: #8a2be2;
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.12) 0%, rgba(138, 43, 226, 0.06) 100%);
+    border-color: rgba(138, 43, 226, 0.4);
+    box-shadow: 0 4px 12px rgba(138, 43, 226, 0.15), 0 0 0 1px rgba(138, 43, 226, 0.1);
+}
+
+.role-selection-item-main:active {
+    transform: translateY(0) scale(0.98);
 }
 
 .role-selection-item-icon-main {
-    font-size: 1.125rem;
+    font-size: 1.25rem;
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--bg-secondary);
-    border-radius: 6px;
-    transition: all 0.2s;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.02) 100%);
+    border-radius: 10px;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.role-selection-item-main:hover .role-selection-item-icon-main {
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.1) 0%, rgba(138, 43, 226, 0.05) 100%);
+    border-color: rgba(138, 43, 226, 0.15);
+    transform: scale(1.05);
 }
 
 .role-selection-item-main.selected .role-selection-item-icon-main {
-    background: rgba(138, 43, 226, 0.15);
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.2) 0%, rgba(138, 43, 226, 0.12) 100%);
+    border-color: rgba(138, 43, 226, 0.3);
+    box-shadow: 0 2px 6px rgba(138, 43, 226, 0.2);
 }
 
 .role-selection-item-content-main {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
     flex: 1;
+    padding-top: 2px;
 }
 
 .role-selection-item-name-main {
     font-weight: 500;
-    color: var(--text-primary);
-    font-size: 0.8125rem;
-    line-height: 1.3;
+    color: #1a1a1a;
+    font-size: 0.875rem;
+    line-height: 1.4;
     margin: 0;
-    transition: color 0.2s;
+    transition: color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    letter-spacing: -0.01em;
 }
 
 .role-selection-item-main.selected .role-selection-item-name-main {
-    color: #8a2be2;
+    color: #6a1bb2;
     font-weight: 600;
 }
 
 .role-selection-item-description-main {
     font-size: 0.75rem;
-    color: var(--text-secondary);
-    line-height: 1.3;
+    color: #666666;
+    line-height: 1.4;
     margin: 0;
     display: -webkit-box;
     -webkit-line-clamp: 1;
@@ -7910,23 +7938,44 @@ header {
     -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
+    transition: color 0.2s;
+}
+
+.role-selection-item-main.selected .role-selection-item-description-main {
+    color: #8a5ab8;
 }
 
 .role-selection-checkmark-main {
     position: absolute;
-    top: 6px;
-    right: 8px;
-    width: 16px;
-    height: 16px;
+    top: 10px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #8a2be2;
+    background: linear-gradient(135deg, #8a2be2 0%, #6a1bb2 100%);
     color: white;
     border-radius: 50%;
-    font-size: 0.625rem;
+    font-size: 0.6875rem;
     font-weight: 700;
     flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(138, 43, 226, 0.4);
+    animation: checkmarkPop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes checkmarkPop {
+    0% {
+        transform: scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
 
 @keyframes highlight-flash {
@@ -8557,42 +8606,43 @@ header {
         width: calc(100vw - 16px);
         max-width: calc(100vw - 16px);
         left: -8px;
-        padding: 8px;
-        border-radius: 8px;
+        padding: 10px;
+        border-radius: 14px;
         max-height: 60vh;
     }
 
     .role-selection-panel-header {
-        margin-bottom: 8px;
-        padding: 6px 4px;
+        margin-bottom: 10px;
+        padding: 8px 4px 10px 4px;
     }
 
     .role-selection-panel-title {
-        font-size: 0.8125rem;
+        font-size: 0.875rem;
     }
 
     .role-selection-list-main {
         /* 在移动设备上限制显示8个角色，每个约60px，总计约480px */
         max-height: 480px;
-        gap: 4px;
+        gap: 5px;
     }
 
     .role-selection-item-main {
-        padding: 8px 10px;
+        padding: 10px;
+        gap: 10px;
     }
 
     .role-selection-item-icon-main {
-        width: 24px;
-        height: 24px;
-        font-size: 1rem;
+        width: 32px;
+        height: 32px;
+        font-size: 1.125rem;
     }
 
     .role-selection-item-name-main {
-        font-size: 0.75rem;
+        font-size: 0.8125rem;
     }
 
     .role-selection-item-description-main {
-        font-size: 0.6875rem;
+        font-size: 0.71875rem;
     }
 }
 
@@ -8601,16 +8651,34 @@ header {
         width: calc(100vw - 8px);
         max-width: calc(100vw - 8px);
         left: -4px;
-        padding: 6px;
+        padding: 8px;
+        border-radius: 12px;
         max-height: 50vh;
     }
 
     .role-selection-list-main {
         /* 在小屏幕上限制显示8个角色，每个约55px，总计约450px */
         max-height: 450px;
+        gap: 5px;
     }
 
     .role-selection-item-main {
-        padding: 6px 8px;
+        padding: 10px;
+        gap: 10px;
+        border-radius: 10px;
+    }
+
+    .role-selection-item-icon-main {
+        width: 30px;
+        height: 30px;
+        font-size: 1.0625rem;
+    }
+
+    .role-selection-checkmark-main {
+        width: 18px;
+        height: 18px;
+        font-size: 0.625rem;
+        top: 8px;
+        right: 8px;
     }
 }

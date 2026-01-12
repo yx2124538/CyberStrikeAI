@@ -1208,12 +1208,42 @@ header {
 }
 
 /* Markdown 表格样式 */
+/* 表格包装容器，为每个表格提供独立的横向滚动 */
+.message-bubble .table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    margin: 1em 0;
+    -webkit-overflow-scrolling: touch;
+    /* 自定义滚动条样式 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.message-bubble .table-wrapper::-webkit-scrollbar {
+    height: 8px;
+}
+
+.message-bubble .table-wrapper::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.message-bubble .table-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.message-bubble .table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
 /* 表格本身，允许根据内容自动扩展宽度 */
 .message-bubble table {
     width: auto;
     min-width: 100%;
     border-collapse: collapse;
-    margin: 1em 0;
+    margin: 0;
     font-size: 0.9em;
     display: table;
     table-layout: auto;
@@ -1249,13 +1279,16 @@ header {
     border-bottom: 1px solid var(--border-color);
     color: var(--text-primary);
     width: auto;
-    max-width: 200px;
     min-width: 120px;
+    max-width: none;
     vertical-align: top;
-    /* 强制不换行，内容会保持在一行，超出部分会溢出（由表格横向滚动处理） */
-    white-space: nowrap !important;
-    overflow: visible;
-    text-overflow: clip;
+    /* 允许文字换行，避免重叠和溢出 */
+    white-space: normal;
+    word-wrap: break-word;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    line-height: 1.5;
 }
 
 
@@ -1332,6 +1365,18 @@ header {
 }
 
 /* 用户消息中的表格样式 */
+.message.user .message-bubble .table-wrapper {
+    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.message.user .message-bubble .table-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.message.user .message-bubble .table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
 .message.user .message-bubble table {
     color: rgba(255, 255, 255, 0.95);
 }

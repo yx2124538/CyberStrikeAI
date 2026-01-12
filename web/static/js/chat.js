@@ -803,6 +803,25 @@ function initializeChatUI() {
 // 消息计数器，确保ID唯一
 let messageCounter = 0;
 
+// 为消息气泡中的表格添加独立的滚动容器
+function wrapTablesInBubble(bubble) {
+    const tables = bubble.querySelectorAll('table');
+    tables.forEach(table => {
+        // 检查表格是否已经有包装容器
+        if (table.parentElement && table.parentElement.classList.contains('table-wrapper')) {
+            return;
+        }
+        
+        // 创建表格包装容器
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-wrapper';
+        
+        // 将表格移动到包装容器中
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+    });
+}
+
 // 添加消息
 function addMessage(role, content, mcpExecutionIds = null, progressId = null, createdAt = null) {
     const messagesDiv = document.getElementById('chat-messages');
@@ -878,6 +897,10 @@ function addMessage(role, content, mcpExecutionIds = null, progressId = null, cr
     }
     
     bubble.innerHTML = formattedContent;
+    
+    // 为每个表格添加独立的滚动容器
+    wrapTablesInBubble(bubble);
+    
     contentWrapper.appendChild(bubble);
     
     // 保存原始内容到消息元素，用于复制功能

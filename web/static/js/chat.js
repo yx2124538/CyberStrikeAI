@@ -93,14 +93,14 @@ function adjustTextareaHeight(textarea) {
     // 强制浏览器重新计算布局
     void textarea.offsetHeight;
     
-    // 计算新高度（最小44px，最大不超过300px）
+    // 计算新高度（最小40px，最大不超过300px）
     const scrollHeight = textarea.scrollHeight;
-    const newHeight = Math.min(Math.max(scrollHeight, 44), 300);
+    const newHeight = Math.min(Math.max(scrollHeight, 40), 300);
     textarea.style.height = newHeight + 'px';
     
     // 如果内容为空或只有很少内容，立即重置到最小高度
     if (!textarea.value || textarea.value.trim().length === 0) {
-        textarea.style.height = '44px';
+        textarea.style.height = '40px';
     }
 }
 
@@ -133,8 +133,8 @@ async function sendMessage() {
     
     // 立即清空输入框并清除草稿（在发送请求之前）
     input.value = '';
-    // 强制重置输入框高度为初始高度（44px）
-    input.style.height = '44px';
+    // 强制重置输入框高度为初始高度（40px）
+    input.style.height = '40px';
     
     // 创建进度消息容器（使用详细的进度展示）
     const progressId = addProgressMessage();
@@ -751,7 +751,8 @@ function applyMentionSelection() {
 function initializeChatUI() {
     const chatInputEl = document.getElementById('chat-input');
     if (chatInputEl) {
-        chatInputEl.style.height = '44px';
+        // 初始化时设置正确的高度
+        adjustTextareaHeight(chatInputEl);
         // 恢复保存的草稿（仅在输入框为空时恢复，避免覆盖用户输入）
         if (!chatInputEl.value || chatInputEl.value.trim() === '') {
             // 检查对话中是否有最近的消息（30秒内），如果有，说明可能是刚刚发送的消息，不恢复草稿
@@ -1479,7 +1480,7 @@ async function startNewConversation() {
     const chatInput = document.getElementById('chat-input');
     if (chatInput) {
         chatInput.value = '';
-        chatInput.style.height = '44px';
+        adjustTextareaHeight(chatInput);
     }
 }
 

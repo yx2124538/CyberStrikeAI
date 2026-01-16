@@ -17,43 +17,45 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 
 <table>
 <tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
 <strong>Web 控制台</strong><br/>
 <img src="./img/效果.png" alt="Web 控制台" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>MCP 集成</strong><br/>
-<img src="./img/MCP管理.png" alt="MCP 管理" width="100%">
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
 <strong>攻击链可视化</strong><br/>
 <img src="./img/攻击链.png" alt="攻击链" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>漏洞管理</strong><br/>
-<img src="./img/漏洞管理.png" alt="漏洞管理" width="100%">
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
 <strong>任务管理</strong><br/>
 <img src="./img/任务.png" alt="任务管理" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>角色管理</strong><br/>
-<img src="./img/角色管理.png" alt="角色管理" width="100%">
+</tr>
+<tr>
+<td width="33.33%" align="center">
+<strong>漏洞管理</strong><br/>
+<img src="./img/漏洞管理.png" alt="漏洞管理" width="100%">
+</td>
+<td width="33.33%" align="center">
+<strong>MCP 管理</strong><br/>
+<img src="./img/MCP管理.png" alt="MCP 管理" width="100%">
+</td>
+<td width="33.33%" align="center">
+<strong>MCP stdio 模式</strong><br/>
+<img src="./img/mcp-stdio2.png" alt="MCP stdio 模式" width="100%">
 </td>
 </tr>
 <tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
+<strong>知识库</strong><br/>
+<img src="./img/知识.png" alt="知识库" width="100%">
+</td>
+<td width="33.33%" align="center">
 <strong>Skills 管理</strong><br/>
 <img src="./img/skills.png" alt="Skills 管理" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>MCP stdio 模式</strong><br/>
-<img src="./img/mcp-stdio2.png" alt="MCP stdio 模式" width="100%">
+<td width="33.33%" align="center">
+<strong>角色管理</strong><br/>
+<img src="./img/角色管理.png" alt="角色管理" width="100%">
 </td>
 </tr>
 </table>

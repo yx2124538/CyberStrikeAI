@@ -18,43 +18,45 @@ CyberStrikeAI is an **AI-native security testing platform** built in Go. It inte
 
 <table>
 <tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
 <strong>Web Console</strong><br/>
 <img src="./img/效果.png" alt="Web Console" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>MCP Integration</strong><br/>
-<img src="./img/MCP管理.png" alt="MCP management" width="100%">
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
 <strong>Attack Chain Visualization</strong><br/>
 <img src="./img/攻击链.png" alt="Attack Chain" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>Vulnerability Management</strong><br/>
-<img src="./img/漏洞管理.png" alt="Vulnerability Management" width="100%">
-</td>
-</tr>
-<tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
 <strong>Task Management</strong><br/>
 <img src="./img/任务.png" alt="Task Management" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>Role Management</strong><br/>
-<img src="./img/角色管理.png" alt="Role Management" width="100%">
+</tr>
+<tr>
+<td width="33.33%" align="center">
+<strong>Vulnerability Management</strong><br/>
+<img src="./img/漏洞管理.png" alt="Vulnerability Management" width="100%">
+</td>
+<td width="33.33%" align="center">
+<strong>MCP Management</strong><br/>
+<img src="./img/MCP管理.png" alt="MCP management" width="100%">
+</td>
+<td width="33.33%" align="center">
+<strong>MCP stdio Mode</strong><br/>
+<img src="./img/mcp-stdio2.png" alt="MCP stdio mode" width="100%">
 </td>
 </tr>
 <tr>
-<td width="50%" align="center">
+<td width="33.33%" align="center">
+<strong>Knowledge Base</strong><br/>
+<img src="./img/知识.png" alt="Knowledge Base" width="100%">
+</td>
+<td width="33.33%" align="center">
 <strong>Skills Management</strong><br/>
 <img src="./img/skills.png" alt="Skills Management" width="100%">
 </td>
-<td width="50%" align="center">
-<strong>MCP stdio Mode</strong><br/>
-<img src="./img/mcp-stdio2.png" alt="MCP stdio mode" width="100%">
+<td width="33.33%" align="center">
+<strong>Role Management</strong><br/>
+<img src="./img/角色管理.png" alt="Role Management" width="100%">
 </td>
 </tr>
 </table>

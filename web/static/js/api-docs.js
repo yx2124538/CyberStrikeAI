@@ -225,11 +225,18 @@ function renderParameters(endpoint) {
     
     const rows = params.map(param => {
             const required = param.required ? '<span class="api-param-required">必需</span>' : '<span class="api-param-optional">可选</span>';
+        // 处理描述文本，将换行符转换为<br>
+        let descriptionHtml = '-';
+        if (param.description) {
+            const escapedDesc = escapeHtml(param.description);
+            descriptionHtml = escapedDesc.replace(/\n/g, '<br>');
+        }
+        
         return `
             <tr>
                 <td><span class="api-param-name">${param.name}</span></td>
                 <td><span class="api-param-type">${param.schema?.type || 'string'}</span></td>
-                <td>${param.description || '-'}</td>
+                <td>${descriptionHtml}</td>
                 <td>${required}</td>
             </tr>
         `;
@@ -297,11 +304,20 @@ function renderRequestBody(endpoint) {
                 typeDisplay += ` (${prop.enum.join(', ')})`;
             }
             
+            // 处理描述文本，将换行符转换为<br>，但保持其他格式
+            let descriptionHtml = '-';
+            if (prop.description) {
+                // 转义HTML，然后处理换行
+                const escapedDesc = escapeHtml(prop.description);
+                // 将 \n 转换为 <br>，但不要转换已经转义的换行
+                descriptionHtml = escapedDesc.replace(/\n/g, '<br>');
+            }
+            
             return `
                 <tr>
                     <td><span class="api-param-name">${escapeHtml(key)}</span></td>
                     <td><span class="api-param-type">${escapeHtml(typeDisplay)}</span></td>
-                    <td>${prop.description ? escapeHtml(prop.description) : '-'}</td>
+                    <td>${descriptionHtml}</td>
                     <td>${required}</td>
                     <td>${prop.example !== undefined ? `<code>${escapeHtml(String(prop.example))}</code>` : '-'}</td>
                 </tr>

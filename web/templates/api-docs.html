@@ -237,6 +237,25 @@
             overflow-x: auto;
             width: 100%;
             -webkit-overflow-scrolling: touch;
+            margin-bottom: 16px;
+        }
+        
+        /* 确保表格在移动设备上也能正常显示 */
+        @media (max-width: 768px) {
+            .api-params-table {
+                font-size: 0.8125rem;
+            }
+            
+            .api-params-table th,
+            .api-params-table td {
+                padding: 8px;
+            }
+            
+            /* 移动设备上描述列可以更宽 */
+            .api-params-table th:nth-child(3),
+            .api-params-table td:nth-child(3) {
+                min-width: 150px;
+            }
         }
         
         .api-section:last-child {
@@ -263,7 +282,7 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 0.875rem;
-            table-layout: auto;
+            table-layout: fixed;
         }
         
         .api-params-table th,
@@ -271,6 +290,38 @@
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid var(--border-color);
+            vertical-align: top;
+        }
+        
+        /* 设置列宽 */
+        .api-params-table th:nth-child(1),
+        .api-params-table td:nth-child(1) {
+            width: 15%;
+            min-width: 120px;
+        }
+        
+        .api-params-table th:nth-child(2),
+        .api-params-table td:nth-child(2) {
+            width: 12%;
+            min-width: 100px;
+        }
+        
+        .api-params-table th:nth-child(3),
+        .api-params-table td:nth-child(3) {
+            width: 45%;
+            min-width: 200px;
+        }
+        
+        .api-params-table th:nth-child(4),
+        .api-params-table td:nth-child(4) {
+            width: 10%;
+            min-width: 80px;
+        }
+        
+        .api-params-table th:nth-child(5),
+        .api-params-table td:nth-child(5) {
+            width: 18%;
+            min-width: 150px;
         }
         
         /* 参数名、类型、必需、示例列不换行 */
@@ -283,23 +334,42 @@
         .api-params-table th:nth-child(5),
         .api-params-table td:nth-child(5) {
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
-        /* 描述列允许换行 */
+        /* 描述列允许换行，但保持水平方向 */
         .api-params-table th:nth-child(3),
         .api-params-table td:nth-child(3) {
             white-space: normal;
-            word-break: break-word;
+            word-wrap: break-word;
+            word-break: normal;
+            overflow-wrap: break-word;
+            writing-mode: horizontal-tb !important;
+            direction: ltr !important;
+            text-align: left;
+            line-height: 1.6;
+            max-width: none;
+        }
+        
+        /* 确保描述单元格内的内容正常显示 */
+        .api-params-table td:nth-child(3) * {
+            display: inline;
+            writing-mode: horizontal-tb !important;
         }
         
         .api-params-table th {
             background: var(--bg-secondary);
             font-weight: 600;
             color: var(--text-primary);
+            writing-mode: horizontal-tb !important;
+            direction: ltr !important;
         }
         
         .api-params-table td {
             color: var(--text-secondary);
+            writing-mode: horizontal-tb !important;
+            direction: ltr !important;
         }
         
         .api-param-name {

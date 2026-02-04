@@ -215,61 +215,10 @@ func (h *ConfigHandler) GetConfig(c *gin.Context) {
 
 	// 获取外部MCP工具
 	if h.externalMCPMgr != nil {
-		// 增加超时时间到30秒，因为通过代理连接远程服务器可能需要更长时间
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		externalTools, err := h.externalMCPMgr.GetAllTools(ctx)
-		if err == nil {
-			externalMCPConfigs := h.externalMCPMgr.GetConfigs()
-			for _, externalTool := range externalTools {
-				var mcpName, actualToolName string
-				if idx := strings.Index(externalTool.Name, "::"); idx > 0 {
-					mcpName = externalTool.Name[:idx]
-					actualToolName = externalTool.Name[idx+2:]
-				} else {
-					continue
-				}
-
-				enabled := false
-				if cfg, exists := externalMCPConfigs[mcpName]; exists {
-					// 首先检查外部MCP是否启用
-					if !cfg.ExternalMCPEnable && !(cfg.Enabled && !cfg.Disabled) {
-						enabled = false // MCP未启用，所有工具都禁用
-					} else {
-						// MCP已启用，检查单个工具的启用状态
-						// 如果ToolEnabled为空或未设置该工具，默认为启用（向后兼容）
-						if cfg.ToolEnabled == nil {
-							enabled = true // 未设置工具状态，默认为启用
-						} else if toolEnabled, exists := cfg.ToolEnabled[actualToolName]; exists {
-							enabled = toolEnabled // 使用配置的工具状态
-						} else {
-							enabled = true // 工具未在配置中，默认为启用
-						}
-					}
-				}
-
-				client, exists := h.externalMCPMgr.GetClient(mcpName)
-				if !exists || !client.IsConnected() {
-					enabled = false
-				}
-
-				description := externalTool.ShortDescription
-				if description == "" {
-					description = externalTool.Description
-				}
-				if len(description) > 100 {
-					description = description[:100] + "..."
-				}
-
-				tools = append(tools, ToolConfigInfo{
-					Name:        actualToolName,
-					Description: description,
-					Enabled:     enabled,
-					IsExternal:  true,
-					ExternalMCP: mcpName,
-				})
-			}
+		ctx := context.Background()
+		externalTools := h.getExternalMCPTools(ctx)
+		for _, toolInfo := range externalTools {
+			tools = append(tools, toolInfo)
 		}
 	}
 
@@ -451,99 +400,43 @@ func (h *ConfigHandler) GetTools(c *gin.Context) {
 
 	// 获取外部MCP工具
 	if h.externalMCPMgr != nil {
-		// 增加超时时间到30秒，因为通过代理连接远程服务器可能需要更长时间
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
+		// 创建context用于获取外部工具
+		ctx := context.Background()
+		externalTools := h.getExternalMCPTools(ctx)
 
-		externalTools, err := h.externalMCPMgr.GetAllTools(ctx)
-		if err != nil {
-			h.logger.Warn("获取外部MCP工具失败", zap.Error(err))
-		} else {
-			// 获取外部MCP配置，用于判断启用状态
-			externalMCPConfigs := h.externalMCPMgr.GetConfigs()
-
-			for _, externalTool := range externalTools {
-				// 解析工具名称：mcpName::toolName
-				var mcpName, actualToolName string
-				if idx := strings.Index(externalTool.Name, "::"); idx > 0 {
-					mcpName = externalTool.Name[:idx]
-					actualToolName = externalTool.Name[idx+2:]
-				} else {
-					continue // 跳过格式不正确的工具
+		// 应用搜索过滤和角色配置
+		for _, toolInfo := range externalTools {
+			// 搜索过滤
+			if searchTermLower != "" {
+				nameLower := strings.ToLower(toolInfo.Name)
+				descLower := strings.ToLower(toolInfo.Description)
+				if !strings.Contains(nameLower, searchTermLower) && !strings.Contains(descLower, searchTermLower) {
+					continue // 不匹配，跳过
 				}
-
-				// 获取外部工具的启用状态
-				enabled := false
-				if cfg, exists := externalMCPConfigs[mcpName]; exists {
-					// 首先检查外部MCP是否启用
-					if !cfg.ExternalMCPEnable && !(cfg.Enabled && !cfg.Disabled) {
-						enabled = false // MCP未启用，所有工具都禁用
-					} else {
-						// MCP已启用，检查单个工具的启用状态
-						// 如果ToolEnabled为空或未设置该工具，默认为启用（向后兼容）
-						if cfg.ToolEnabled == nil {
-							enabled = true // 未设置工具状态，默认为启用
-						} else if toolEnabled, exists := cfg.ToolEnabled[actualToolName]; exists {
-							enabled = toolEnabled // 使用配置的工具状态
-						} else {
-							enabled = true // 工具未在配置中，默认为启用
-						}
-					}
-				}
-
-				// 检查外部MCP是否已连接
-				client, exists := h.externalMCPMgr.GetClient(mcpName)
-				if !exists || !client.IsConnected() {
-					enabled = false // 未连接时视为禁用
-				}
-
-				description := externalTool.ShortDescription
-				if description == "" {
-					description = externalTool.Description
-				}
-				if len(description) > 100 {
-					description = description[:100] + "..."
-				}
-
-				// 如果有关键词，进行搜索过滤
-				if searchTermLower != "" {
-					nameLower := strings.ToLower(actualToolName)
-					descLower := strings.ToLower(description)
-					if !strings.Contains(nameLower, searchTermLower) && !strings.Contains(descLower, searchTermLower) {
-						continue // 不匹配，跳过
-					}
-				}
-
-				toolInfo := ToolConfigInfo{
-					Name:        actualToolName, // 显示实际工具名称，不带前缀
-					Description: description,
-					Enabled:     enabled,
-					IsExternal:  true,
-					ExternalMCP: mcpName,
-				}
-
-				// 根据角色配置标注工具状态
-				if roleName != "" {
-					if roleUsesAllTools {
-						// 角色使用所有工具，标注启用的工具为role_enabled=true
-						toolInfo.RoleEnabled = &enabled
-					} else {
-						// 角色配置了工具列表，检查工具是否在列表中
-						// 外部工具使用 "mcpName::toolName" 格式作为key
-						externalToolKey := externalTool.Name // 这是 "mcpName::toolName" 格式
-						if roleToolsSet[externalToolKey] {
-							roleEnabled := enabled // 工具必须在角色列表中且本身启用
-							toolInfo.RoleEnabled = &roleEnabled
-						} else {
-							// 不在角色列表中，标记为false
-							roleEnabled := false
-							toolInfo.RoleEnabled = &roleEnabled
-						}
-					}
-				}
-
-				allTools = append(allTools, toolInfo)
 			}
+
+			// 根据角色配置标注工具状态
+			if roleName != "" {
+				if roleUsesAllTools {
+					// 角色使用所有工具，标注启用的工具为role_enabled=true
+					roleEnabled := toolInfo.Enabled
+					toolInfo.RoleEnabled = &roleEnabled
+				} else {
+					// 角色配置了工具列表，检查工具是否在列表中
+					// 外部工具使用 "mcpName::toolName" 格式作为key
+					externalToolKey := fmt.Sprintf("%s::%s", toolInfo.ExternalMCP, toolInfo.Name)
+					if roleToolsSet[externalToolKey] {
+						roleEnabled := toolInfo.Enabled // 工具必须在角色列表中且本身启用
+						toolInfo.RoleEnabled = &roleEnabled
+					} else {
+						// 不在角色列表中，标记为false
+						roleEnabled := false
+						toolInfo.RoleEnabled = &roleEnabled
+					}
+				}
+			}
+
+			allTools = append(allTools, toolInfo)
 		}
 	}
 
@@ -1258,4 +1151,112 @@ func setFloatInMap(mapNode *yaml.Node, key string, value float64) {
 	} else {
 		valueNode.Value = fmt.Sprintf("%g", value)
 	}
+}
+
+// getExternalMCPTools 获取外部MCP工具列表（公共方法）
+// 返回 ToolConfigInfo 列表，已处理启用状态和描述信息
+func (h *ConfigHandler) getExternalMCPTools(ctx context.Context) []ToolConfigInfo {
+	var result []ToolConfigInfo
+
+	if h.externalMCPMgr == nil {
+		return result
+	}
+
+	// 使用较短的超时时间（5秒）进行快速失败，避免阻塞页面加载
+	timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	externalTools, err := h.externalMCPMgr.GetAllTools(timeoutCtx)
+	if err != nil {
+		// 记录警告但不阻塞，继续返回已缓存的工具（如果有）
+		h.logger.Warn("获取外部MCP工具失败（可能连接断开），尝试返回缓存的工具",
+			zap.Error(err),
+			zap.String("hint", "如果外部MCP工具未显示，请检查连接状态或点击刷新按钮"),
+		)
+	}
+
+	// 如果获取到了工具（即使有错误），继续处理
+	if len(externalTools) == 0 {
+		return result
+	}
+
+	externalMCPConfigs := h.externalMCPMgr.GetConfigs()
+
+	for _, externalTool := range externalTools {
+		// 解析工具名称：mcpName::toolName
+		mcpName, actualToolName := h.parseExternalToolName(externalTool.Name)
+		if mcpName == "" || actualToolName == "" {
+			continue // 跳过格式不正确的工具
+		}
+
+		// 计算启用状态
+		enabled := h.calculateExternalToolEnabled(mcpName, actualToolName, externalMCPConfigs)
+
+		// 处理描述信息
+		description := h.formatToolDescription(externalTool.ShortDescription, externalTool.Description)
+
+		result = append(result, ToolConfigInfo{
+			Name:        actualToolName,
+			Description: description,
+			Enabled:     enabled,
+			IsExternal:  true,
+			ExternalMCP: mcpName,
+		})
+	}
+
+	return result
+}
+
+// parseExternalToolName 解析外部工具名称（格式：mcpName::toolName）
+func (h *ConfigHandler) parseExternalToolName(fullName string) (mcpName, toolName string) {
+	idx := strings.Index(fullName, "::")
+	if idx > 0 {
+		return fullName[:idx], fullName[idx+2:]
+	}
+	return "", ""
+}
+
+// calculateExternalToolEnabled 计算外部工具的启用状态
+func (h *ConfigHandler) calculateExternalToolEnabled(mcpName, toolName string, configs map[string]config.ExternalMCPServerConfig) bool {
+	cfg, exists := configs[mcpName]
+	if !exists {
+		return false
+	}
+
+	// 首先检查外部MCP是否启用
+	if !cfg.ExternalMCPEnable && !(cfg.Enabled && !cfg.Disabled) {
+		return false // MCP未启用，所有工具都禁用
+	}
+
+	// MCP已启用，检查单个工具的启用状态
+	// 如果ToolEnabled为空或未设置该工具，默认为启用（向后兼容）
+	if cfg.ToolEnabled == nil {
+		// 未设置工具状态，默认为启用
+	} else if toolEnabled, exists := cfg.ToolEnabled[toolName]; exists {
+		// 使用配置的工具状态
+		if !toolEnabled {
+			return false
+		}
+	}
+	// 工具未在配置中，默认为启用
+
+	// 最后检查外部MCP是否已连接
+	client, exists := h.externalMCPMgr.GetClient(mcpName)
+	if !exists || !client.IsConnected() {
+		return false // 未连接时视为禁用
+	}
+
+	return true
+}
+
+// formatToolDescription 格式化工具描述（限制长度）
+func (h *ConfigHandler) formatToolDescription(shortDesc, fullDesc string) string {
+	description := shortDesc
+	if description == "" {
+		description = fullDesc
+	}
+	if len(description) > 100 {
+		description = description[:100] + "..."
+	}
+	return description
 }

@@ -183,6 +183,14 @@ let toolsSearchKeyword = '';
 
 // 加载工具列表（分页）
 async function loadToolsList(page = 1, searchKeyword = '') {
+    const toolsList = document.getElementById('tools-list');
+    
+    // 显示加载状态
+    if (toolsList) {
+        // 清空整个容器，包括可能存在的分页控件
+        toolsList.innerHTML = '<div class="tools-list-items"><div class="loading" style="padding: 20px; text-align: center; color: var(--text-muted);">⏳ 正在加载工具列表...</div></div>';
+    }
+    
     try {
         // 在加载新页面之前，先保存当前页的状态到全局映射
         saveCurrentPageToolStates();
@@ -193,7 +201,15 @@ async function loadToolsList(page = 1, searchKeyword = '') {
             url += `&search=${encodeURIComponent(searchKeyword)}`;
         }
         
-        const response = await apiFetch(url);
+        // 使用较短的超时时间（10秒），避免长时间等待
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await apiFetch(url, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         if (!response.ok) {
             throw new Error('获取工具列表失败');
         }
@@ -224,9 +240,12 @@ async function loadToolsList(page = 1, searchKeyword = '') {
         renderToolsPagination();
     } catch (error) {
         console.error('加载工具列表失败:', error);
-        const toolsList = document.getElementById('tools-list');
         if (toolsList) {
-            toolsList.innerHTML = `<div class="error">加载工具列表失败: ${escapeHtml(error.message)}</div>`;
+            const isTimeout = error.name === 'AbortError' || error.message.includes('timeout');
+            const errorMsg = isTimeout 
+                ? '加载工具列表超时，可能是外部MCP连接较慢。请点击"刷新"按钮重试，或检查外部MCP连接状态。'
+                : `加载工具列表失败: ${escapeHtml(error.message)}`;
+            toolsList.innerHTML = `<div class="error" style="padding: 20px; text-align: center;">${errorMsg}</div>`;
         }
     }
 }
@@ -281,9 +300,21 @@ function renderToolsList() {
     const toolsList = document.getElementById('tools-list');
     if (!toolsList) return;
     
-    // 只渲染列表部分，分页控件单独渲染
-    const listContainer = toolsList.querySelector('.tools-list-items') || document.createElement('div');
-    listContainer.className = 'tools-list-items';
+    // 移除可能存在的分页控件（会在 renderToolsPagination 中重新添加）
+    const oldPagination = toolsList.querySelector('.tools-pagination');
+    if (oldPagination) {
+        oldPagination.remove();
+    }
+    
+    // 获取或创建列表容器
+    let listContainer = toolsList.querySelector('.tools-list-items');
+    if (!listContainer) {
+        listContainer = document.createElement('div');
+        listContainer.className = 'tools-list-items';
+        toolsList.appendChild(listContainer);
+    }
+    
+    // 清空列表容器内容（移除加载提示）
     listContainer.innerHTML = '';
     
     if (allTools.length === 0) {

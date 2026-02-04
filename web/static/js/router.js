@@ -254,16 +254,25 @@ function initPage(pageId) {
             break;
         case 'mcp-management':
             // 初始化MCP管理
+            // 先加载外部MCP列表（快速），然后加载工具列表
             if (typeof loadExternalMCPs === 'function') {
-                loadExternalMCPs();
+                loadExternalMCPs().catch(err => {
+                    console.warn('加载外部MCP列表失败:', err);
+                });
             }
             // 加载工具列表（MCP工具配置已移到MCP管理页面）
+            // 使用异步加载，避免阻塞页面渲染
             if (typeof loadToolsList === 'function') {
                 // 确保工具分页设置已初始化
                 if (typeof getToolsPageSize === 'function' && typeof toolsPagination !== 'undefined') {
                     toolsPagination.pageSize = getToolsPageSize();
                 }
-                loadToolsList(1, '');
+                // 延迟加载，让页面先渲染
+                setTimeout(() => {
+                    loadToolsList(1, '').catch(err => {
+                        console.error('加载工具列表失败:', err);
+                    });
+                }, 100);
             }
             break;
         case 'vulnerabilities':

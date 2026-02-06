@@ -178,11 +178,11 @@ func (h *ConfigHandler) GetConfig(c *gin.Context) {
 			Enabled:     tool.Enabled,
 			IsExternal:  false,
 		})
-		// 如果没有简短描述，使用详细描述的前100个字符
+		// 如果没有简短描述，使用详细描述的前10000个字符
 		if tools[len(tools)-1].Description == "" {
 			desc := tool.Description
-			if len(desc) > 100 {
-				desc = desc[:100] + "..."
+			if len(desc) > 10000 {
+				desc = desc[:10000] + "..."
 			}
 			tools[len(tools)-1].Description = desc
 		}
@@ -201,8 +201,8 @@ func (h *ConfigHandler) GetConfig(c *gin.Context) {
 			if description == "" {
 				description = mcpTool.Description
 			}
-			if len(description) > 100 {
-				description = description[:100] + "..."
+			if len(description) > 10000 {
+				description = description[:10000] + "..."
 			}
 			tools = append(tools, ToolConfigInfo{
 				Name:        mcpTool.Name,
@@ -295,11 +295,11 @@ func (h *ConfigHandler) GetTools(c *gin.Context) {
 			Enabled:     tool.Enabled,
 			IsExternal:  false,
 		}
-		// 如果没有简短描述，使用详细描述的前100个字符
+		// 如果没有简短描述，使用详细描述的前10000个字符
 		if toolInfo.Description == "" {
 			desc := tool.Description
-			if len(desc) > 100 {
-				desc = desc[:100] + "..."
+			if len(desc) > 10000 {
+				desc = desc[:10000] + "..."
 			}
 			toolInfo.Description = desc
 		}
@@ -354,8 +354,8 @@ func (h *ConfigHandler) GetTools(c *gin.Context) {
 			if description == "" {
 				description = mcpTool.Description
 			}
-			if len(description) > 100 {
-				description = description[:100] + "..."
+			if len(description) > 10000 {
+				description = description[:10000] + "..."
 			}
 
 			toolInfo := ToolConfigInfo{
@@ -1255,8 +1255,8 @@ func (h *ConfigHandler) formatToolDescription(shortDesc, fullDesc string) string
 	if description == "" {
 		description = fullDesc
 	}
-	if len(description) > 100 {
-		description = description[:100] + "..."
+	if len(description) > 10000 {
+		description = description[:10000] + "..."
 	}
 	return description
 }

@@ -224,17 +224,17 @@ func (e *Executor) RegisterTools(mcpServer *mcp.Server) {
 		toolName := toolConfig.Name
 		toolConfigCopy := toolConfig
 
-		// 使用简短描述（如果存在），否则使用详细描述的前100个字符
+		// 使用简短描述（如果存在），否则使用详细描述的前10000个字符
 		shortDesc := toolConfigCopy.ShortDescription
 		if shortDesc == "" {
-			// 如果没有简短描述，从详细描述中提取第一行或前100个字符
+			// 如果没有简短描述，从详细描述中提取第一行或前10000个字符
 			desc := toolConfigCopy.Description
-			if len(desc) > 100 {
+			if len(desc) > 10000 {
 				// 尝试找到第一个换行符
-				if idx := strings.Index(desc, "\n"); idx > 0 && idx < 100 {
+				if idx := strings.Index(desc, "\n"); idx > 0 && idx < 10000 {
 					shortDesc = strings.TrimSpace(desc[:idx])
 				} else {
-					shortDesc = desc[:100] + "..."
+					shortDesc = desc[:10000] + "..."
 				}
 			} else {
 				shortDesc = desc

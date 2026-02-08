@@ -158,8 +158,8 @@ func (mc *MemoryCompressor) UpdateConfig(cfg *config.OpenAIConfig) {
 	}
 }
 
-// CompressHistory 根据Token限制压缩历史消息。
-func (mc *MemoryCompressor) CompressHistory(ctx context.Context, messages []ChatMessage) ([]ChatMessage, bool, error) {
+// CompressHistory 根据 Token 限制压缩历史消息。reservedTokens 为预留给 tools 等非消息内容的 token 数，压缩时使用 (maxTotalTokens - reservedTokens) 作为消息上限。
+func (mc *MemoryCompressor) CompressHistory(ctx context.Context, messages []ChatMessage, reservedTokens int) ([]ChatMessage, bool, error) {
 	if len(messages) == 0 {
 		return messages, false, nil
 	}
@@ -171,8 +171,13 @@ func (mc *MemoryCompressor) CompressHistory(ctx context.Context, messages []Chat
 		return messages, false, nil
 	}
 
+	effectiveMax := mc.maxTotalTokens
+	if reservedTokens > 0 && reservedTokens < mc.maxTotalTokens {
+		effectiveMax = mc.maxTotalTokens - reservedTokens
+	}
+
 	totalTokens := mc.countTotalTokens(systemMsgs, regularMsgs)
-	if totalTokens <= int(float64(mc.maxTotalTokens)*0.9) {
+	if totalTokens <= int(float64(effectiveMax)*0.9) {
 		return messages, false, nil
 	}
 
@@ -184,6 +189,8 @@ func (mc *MemoryCompressor) CompressHistory(ctx context.Context, messages []Chat
 	mc.logger.Info("memory compression triggered",
 		zap.Int("total_tokens", totalTokens),
 		zap.Int("max_total_tokens", mc.maxTotalTokens),
+		zap.Int("reserved_tokens", reservedTokens),
+		zap.Int("effective_max", effectiveMax),
 		zap.Int("system_messages", len(systemMsgs)),
 		zap.Int("regular_messages", len(regularMsgs)),
 		zap.Int("old_messages", len(oldMsgs)),
@@ -280,6 +287,11 @@ func (mc *MemoryCompressor) countTokens(text string) int {
 		return len(text) / 4
 	}
 	return count
+}
+
+// CountTextTokens 对外暴露的文本 Token 计数，用于统计 tools 等非消息内容的 token（如 agent 侧序列化 tools 后计数）。
+func (mc *MemoryCompressor) CountTextTokens(text string) int {
+	return mc.countTokens(text)
 }
 
 // totalTokensFor provides token statistics without mutating the message list.

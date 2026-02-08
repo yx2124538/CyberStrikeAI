@@ -529,8 +529,10 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 
 	maxIterations := a.maxIterations
 	for i := 0; i < maxIterations; i++ {
-		// 每轮调用前先尝试压缩，防止历史消息持续膨胀
-		messages = a.applyMemoryCompression(ctx, messages)
+		// 先获取本轮可用工具并统计 tools token，再压缩，以便压缩时预留 tools 占用的空间
+		tools := a.getAvailableTools(roleTools)
+		toolsTokens := a.countToolsTokens(tools)
+		messages = a.applyMemoryCompression(ctx, messages, toolsTokens)
 
 		// 检查是否是最后一次迭代
 		isLastIteration := (i == maxIterations-1)
@@ -562,17 +564,17 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 		default:
 		}
 
-		// 获取可用工具
-		tools := a.getAvailableTools(roleTools)
-
-		// 记录当前上下文的Token用量，展示压缩器运行状态
+		// 记录当前上下文的 Token 用量（messages + tools），展示压缩器运行状态
 		if a.memoryCompressor != nil {
-			totalTokens, systemCount, regularCount := a.memoryCompressor.totalTokensFor(messages)
+			messagesTokens, systemCount, regularCount := a.memoryCompressor.totalTokensFor(messages)
+			totalTokens := messagesTokens + toolsTokens
 			a.logger.Info("memory compressor context stats",
 				zap.Int("iteration", i+1),
 				zap.Int("messagesCount", len(messages)),
 				zap.Int("systemMessages", systemCount),
 				zap.Int("regularMessages", regularCount),
+				zap.Int("messagesTokens", messagesTokens),
+				zap.Int("toolsTokens", toolsTokens),
 				zap.Int("totalTokens", totalTokens),
 				zap.Int("maxTotalTokens", a.memoryCompressor.maxTotalTokens),
 			)
@@ -788,7 +790,7 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 					Role:    "user",
 					Content: "这是最后一次迭代。请总结到目前为止的所有测试结果、发现的问题和已完成的工作。如果需要继续测试，请提供详细的下一步执行计划。请直接回复，不要调用工具。",
 				})
-				messages = a.applyMemoryCompression(ctx, messages)
+				messages = a.applyMemoryCompression(ctx, messages, 0) // 总结时不带 tools，不预留
 				// 立即调用OpenAI获取总结
 				summaryResponse, err := a.callOpenAI(ctx, messages, []Tool{}) // 不提供工具，强制AI直接回复
 				if err == nil && summaryResponse != nil && len(summaryResponse.Choices) > 0 {
@@ -828,7 +830,7 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 				Role:    "user",
 				Content: "这是最后一次迭代。请总结到目前为止的所有测试结果、发现的问题和已完成的工作。如果需要继续测试，请提供详细的下一步执行计划。请直接回复，不要调用工具。",
 			})
-			messages = a.applyMemoryCompression(ctx, messages)
+			messages = a.applyMemoryCompression(ctx, messages, 0) // 总结时不带 tools，不预留
 			// 立即调用OpenAI获取总结
 			summaryResponse, err := a.callOpenAI(ctx, messages, []Tool{}) // 不提供工具，强制AI直接回复
 			if err == nil && summaryResponse != nil && len(summaryResponse.Choices) > 0 {
@@ -867,7 +869,7 @@ func (a *Agent) AgentLoopWithProgress(ctx context.Context, userInput string, his
 		Content: fmt.Sprintf("已达到最大迭代次数（%d轮）。请总结到目前为止的所有测试结果、发现的问题和已完成的工作。如果需要继续测试，请提供详细的下一步执行计划。请直接回复，不要调用工具。", a.maxIterations),
 	}
 	messages = append(messages, finalSummaryPrompt)
-	messages = a.applyMemoryCompression(ctx, messages)
+	messages = a.applyMemoryCompression(ctx, messages, 0) // 总结时不带 tools，不预留
 
 	summaryResponse, err := a.callOpenAI(ctx, messages, []Tool{}) // 不提供工具，强制AI直接回复
 	if err == nil && summaryResponse != nil && len(summaryResponse.Choices) > 0 {
@@ -1425,13 +1427,13 @@ func (a *Agent) formatToolError(toolName string, args map[string]interface{}, er
 	return errorMsg
 }
 
-// applyMemoryCompression 在调用LLM前对消息进行压缩，避免超过token限制
-func (a *Agent) applyMemoryCompression(ctx context.Context, messages []ChatMessage) []ChatMessage {
+// applyMemoryCompression 在调用LLM前对消息进行压缩，避免超过 token 限制。reservedTokens 为预留给 tools 的 token 数，传 0 表示不预留。
+func (a *Agent) applyMemoryCompression(ctx context.Context, messages []ChatMessage, reservedTokens int) []ChatMessage {
 	if a.memoryCompressor == nil {
 		return messages
 	}
 
-	compressed, changed, err := a.memoryCompressor.CompressHistory(ctx, messages)
+	compressed, changed, err := a.memoryCompressor.CompressHistory(ctx, messages, reservedTokens)
 	if err != nil {
 		a.logger.Warn("上下文压缩失败，将使用原始消息继续", zap.Error(err))
 		return messages
@@ -1445,6 +1447,18 @@ func (a *Agent) applyMemoryCompression(ctx context.Context, messages []ChatMessa
 	}
 
 	return messages
+}
+
+// countToolsTokens 统计 tools 序列化后的 token 数，用于日志与压缩时预留空间。mc 为 nil 时返回 0。
+func (a *Agent) countToolsTokens(tools []Tool) int {
+	if len(tools) == 0 || a.memoryCompressor == nil {
+		return 0
+	}
+	data, err := json.Marshal(tools)
+	if err != nil {
+		return 0
+	}
+	return a.memoryCompressor.CountTextTokens(string(data))
 }
 
 // handleMissingToolError 当LLM调用不存在的工具时，向其追加提示消息并允许继续迭代

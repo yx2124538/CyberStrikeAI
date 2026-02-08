@@ -1,5 +1,5 @@
 // 页面路由管理
-let currentPage = 'chat';
+let currentPage = 'dashboard';
 
 // 初始化路由
 function initRouter() {
@@ -32,8 +32,8 @@ function initRouter() {
         }
     }
     
-    // 默认显示对话页面
-    switchPage('chat');
+    // 默认显示仪表盘
+    switchPage('dashboard');
 }
 
 // 切换页面

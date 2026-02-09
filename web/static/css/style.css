@@ -8150,6 +8150,265 @@ header {
     color: var(--text-primary);
 }
 
+/* 运行概览优化样式 */
+.dashboard-overview-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dashboard-overview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.dashboard-overview-total {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(0, 102, 255, 0.08);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.dashboard-overview-success-rate {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.dashboard-overview-status {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.dashboard-overview-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.dashboard-overview-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8125rem;
+}
+
+.dashboard-overview-stat-badge {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.dashboard-overview-stat-badge.badge-pending {
+    background: #f59e0b;
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+}
+
+.dashboard-overview-stat-badge.badge-running {
+    background: #3b82f6;
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+    animation: pulse-running 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.dashboard-overview-stat-badge.badge-done {
+    background: #10b981;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes pulse-running {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+    }
+    50% {
+        opacity: 0.8;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0);
+    }
+}
+
+.dashboard-overview-stat-value {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-overview-stat-label {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
+.dashboard-overview-progress {
+    margin-top: 4px;
+}
+
+.dashboard-overview-progress-bar {
+    height: 6px;
+    background: #f1f5f9;
+    border-radius: 3px;
+    overflow: hidden;
+    display: flex;
+    position: relative;
+}
+
+.dashboard-overview-progress-segment {
+    height: 100%;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.dashboard-overview-progress-pending {
+    background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+
+.dashboard-overview-progress-running {
+    background: linear-gradient(90deg, #60a5fa, #3b82f6);
+    animation: shimmer 2s infinite;
+}
+
+.dashboard-overview-progress-done {
+    background: linear-gradient(90deg, #34d399, #10b981);
+}
+
+@keyframes shimmer {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.dashboard-overview-value-group {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.dashboard-overview-value-large {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.dashboard-overview-value-normal {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-overview-value-unit {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.dashboard-overview-value-separator {
+    color: var(--text-secondary);
+    opacity: 0.4;
+    margin: 0 2px;
+}
+
+/* 不同模块的图标颜色 */
+.dashboard-overview-icon-batch {
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+}
+
+.dashboard-overview-icon-tools {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
+.dashboard-overview-icon-knowledge {
+    background: rgba(139, 92, 246, 0.1);
+    color: #7c3aed;
+}
+
+.dashboard-overview-icon-skills {
+    background: rgba(236, 72, 153, 0.1);
+    color: #db2777;
+}
+
+/* 悬停效果增强 */
+.dashboard-overview-item:hover .dashboard-overview-icon {
+    transform: scale(1.1);
+    transition: transform 0.2s ease;
+}
+
+.dashboard-overview-item:hover .dashboard-overview-value-large {
+    color: #0066ff;
+    transition: color 0.2s ease;
+}
+
+.dashboard-overview-item-batch:hover {
+    border-color: rgba(245, 158, 11, 0.3);
+    background: linear-gradient(135deg, rgba(245,158,11,0.06) 0%, rgba(245,158,11,0.08) 100%);
+}
+
+.dashboard-overview-item-tools:hover {
+    border-color: rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, rgba(59,130,246,0.06) 0%, rgba(59,130,246,0.08) 100%);
+}
+
+.dashboard-overview-item-knowledge:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    background: linear-gradient(135deg, rgba(139,92,246,0.06) 0%, rgba(139,92,246,0.08) 100%);
+}
+
+.dashboard-overview-item-skills:hover {
+    border-color: rgba(236, 72, 153, 0.3);
+    background: linear-gradient(135deg, rgba(236,72,153,0.06) 0%, rgba(236,72,153,0.08) 100%);
+}
+
+/* 响应式优化 */
+@media (max-width: 768px) {
+    .dashboard-overview-stats {
+        gap: 12px;
+    }
+    
+    .dashboard-overview-value-group {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+    
+    .dashboard-overview-value-separator {
+        display: none;
+    }
+}
+
 .dashboard-chart-wrap {
     display: flex;
     flex-direction: column;

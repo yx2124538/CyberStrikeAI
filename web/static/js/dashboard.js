@@ -63,7 +63,7 @@ async function refreshDashboard() {
             });
         }
 
-        // 批量任务队列：按状态统计
+        // 批量任务队列：按状态统计（优化版）
         if (batchRes && Array.isArray(batchRes.queues)) {
             const queues = batchRes.queues;
             let pending = 0, running = 0, done = 0;
@@ -73,16 +73,36 @@ async function refreshDashboard() {
                 else if (s === 'running') running++;
                 else if (s === 'completed' || s === 'cancelled') done++;
             });
+            const total = pending + running + done;
             setEl('dashboard-batch-pending', String(pending));
             setEl('dashboard-batch-running', String(running));
             setEl('dashboard-batch-done', String(done));
+            setEl('dashboard-batch-total', total > 0 ? `共 ${total} 个` : '暂无任务');
+            
+            // 更新进度条
+            if (total > 0) {
+                const pendingPct = (pending / total * 100).toFixed(1);
+                const runningPct = (running / total * 100).toFixed(1);
+                const donePct = (done / total * 100).toFixed(1);
+                updateProgressBar('dashboard-batch-progress-pending', pendingPct);
+                updateProgressBar('dashboard-batch-progress-running', runningPct);
+                updateProgressBar('dashboard-batch-progress-done', donePct);
+            } else {
+                updateProgressBar('dashboard-batch-progress-pending', '0');
+                updateProgressBar('dashboard-batch-progress-running', '0');
+                updateProgressBar('dashboard-batch-progress-done', '0');
+            }
         } else {
             setEl('dashboard-batch-pending', '-');
             setEl('dashboard-batch-running', '-');
             setEl('dashboard-batch-done', '-');
+            setEl('dashboard-batch-total', '-');
+            updateProgressBar('dashboard-batch-progress-pending', '0');
+            updateProgressBar('dashboard-batch-progress-running', '0');
+            updateProgressBar('dashboard-batch-progress-done', '0');
         }
 
-        // 工具调用：monitor/stats 为 { toolName: { totalCalls, successCalls, failedCalls, ... } }
+        // 工具调用：monitor/stats 为 { toolName: { totalCalls, successCalls, failedCalls, ... } }（优化版）
         if (monitorRes && typeof monitorRes === 'object') {
             const names = Object.keys(monitorRes);
             let totalCalls = 0, totalSuccess = 0, totalFailed = 0;
@@ -96,40 +116,68 @@ async function refreshDashboard() {
                 if (typeof f === 'number') totalFailed += f;
             });
             setEl('dashboard-tools-count', String(names.length));
-            setEl('dashboard-tools-calls', String(totalCalls));
+            setEl('dashboard-tools-calls', formatNumber(totalCalls));
             setEl('dashboard-kpi-tools-calls', String(totalCalls));
             var rateStr = totalCalls > 0 ? ((totalSuccess / totalCalls) * 100).toFixed(1) + '%' : '-';
             setEl('dashboard-kpi-success-rate', rateStr);
+            setEl('dashboard-tools-success-rate', rateStr !== '-' ? `成功率 ${rateStr}` : '-');
             renderDashboardToolsBar(monitorRes);
         } else {
             setEl('dashboard-tools-count', '-');
             setEl('dashboard-tools-calls', '-');
             setEl('dashboard-kpi-tools-calls', '-');
             setEl('dashboard-kpi-success-rate', '-');
+            setEl('dashboard-tools-success-rate', '-');
             renderDashboardToolsBar(null);
         }
 
-        // 知识：{ enabled, total_categories, total_items, ... }
-        const knowledgeValueEl = document.getElementById('dashboard-knowledge-value');
+        // 知识：{ enabled, total_categories, total_items, ... }（优化版）
+        const knowledgeItemsEl = document.getElementById('dashboard-knowledge-items');
+        const knowledgeCategoriesEl = document.getElementById('dashboard-knowledge-categories');
         if (knowledgeRes && typeof knowledgeRes === 'object') {
             if (knowledgeRes.enabled === false) {
-                if (knowledgeValueEl) knowledgeValueEl.textContent = '知识功能暂未启用';
+                if (knowledgeItemsEl) knowledgeItemsEl.textContent = '未启用';
+                if (knowledgeCategoriesEl) knowledgeCategoriesEl.textContent = '-';
             } else {
                 const categories = knowledgeRes.total_categories ?? 0;
                 const items = knowledgeRes.total_items ?? 0;
-                if (knowledgeValueEl) knowledgeValueEl.textContent = `${categories} 个分类，共 ${items} 项`;
+                if (knowledgeItemsEl) knowledgeItemsEl.textContent = formatNumber(items);
+                if (knowledgeCategoriesEl) knowledgeCategoriesEl.textContent = formatNumber(categories);
             }
         } else {
-            if (knowledgeValueEl) knowledgeValueEl.textContent = '-';
+            if (knowledgeItemsEl) knowledgeItemsEl.textContent = '-';
+            if (knowledgeCategoriesEl) knowledgeCategoriesEl.textContent = '-';
         }
 
-        // Skills：{ total_skills, total_calls, ... }
+        // Skills：{ total_skills, total_calls, ... }（优化版）
         if (skillsRes && typeof skillsRes === 'object') {
-            setEl('dashboard-skills-count', String(skillsRes.total_skills ?? '-'));
-            setEl('dashboard-skills-calls', String(skillsRes.total_calls ?? '-'));
+            const totalSkills = skillsRes.total_skills ?? 0;
+            const totalCalls = skillsRes.total_calls ?? 0;
+            setEl('dashboard-skills-count', formatNumber(totalSkills));
+            setEl('dashboard-skills-calls', formatNumber(totalCalls));
+            
+            // 设置状态标签
+            const statusEl = document.getElementById('dashboard-skills-status');
+            if (statusEl) {
+                if (totalCalls === 0) {
+                    statusEl.textContent = '待使用';
+                    statusEl.style.background = 'rgba(0, 0, 0, 0.05)';
+                    statusEl.style.color = 'var(--text-secondary)';
+                } else if (totalCalls < 10) {
+                    statusEl.textContent = '活跃';
+                    statusEl.style.background = 'rgba(16, 185, 129, 0.1)';
+                    statusEl.style.color = '#10b981';
+                } else {
+                    statusEl.textContent = '高频';
+                    statusEl.style.background = 'rgba(59, 130, 246, 0.1)';
+                    statusEl.style.color = '#3b82f6';
+                }
+            }
         } else {
             setEl('dashboard-skills-count', '-');
             setEl('dashboard-skills-calls', '-');
+            const statusEl = document.getElementById('dashboard-skills-status');
+            if (statusEl) statusEl.textContent = '-';
         }
     } catch (e) {
         console.warn('仪表盘拉取统计失败', e);
@@ -150,10 +198,29 @@ function setEl(id, text) {
 }
 
 function setDashboardOverviewPlaceholder(t) {
-    ['dashboard-batch-pending', 'dashboard-batch-running', 'dashboard-batch-done',
-     'dashboard-tools-count', 'dashboard-tools-calls', 'dashboard-skills-count', 'dashboard-skills-calls'].forEach(id => setEl(id, t));
-    const knowledgeValueEl = document.getElementById('dashboard-knowledge-value');
-    if (knowledgeValueEl) knowledgeValueEl.textContent = t;
+    ['dashboard-batch-pending', 'dashboard-batch-running', 'dashboard-batch-done', 'dashboard-batch-total',
+     'dashboard-tools-count', 'dashboard-tools-calls', 'dashboard-tools-success-rate',
+     'dashboard-skills-count', 'dashboard-skills-calls', 'dashboard-skills-status',
+     'dashboard-knowledge-items', 'dashboard-knowledge-categories'].forEach(id => setEl(id, t));
+    updateProgressBar('dashboard-batch-progress-pending', '0');
+    updateProgressBar('dashboard-batch-progress-running', '0');
+    updateProgressBar('dashboard-batch-progress-done', '0');
+}
+
+// 格式化数字，添加千位分隔符
+function formatNumber(num) {
+    if (typeof num !== 'number' || isNaN(num)) return '-';
+    if (num === 0) return '0';
+    return num.toLocaleString('zh-CN');
+}
+
+// 更新进度条宽度
+function updateProgressBar(id, percentage) {
+    const el = document.getElementById(id);
+    if (el) {
+        const pct = parseFloat(percentage) || 0;
+        el.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    }
 }
 
 // Top 30 工具执行次数柱状图颜色（30 色不重复，柔和、易区分）

@@ -11,7 +11,7 @@
 <body>
     <div id="login-overlay" class="login-overlay" style="display: none;">
         <div class="login-card">
-            <div class="login-brand">
+            <div class="login-header">
                 <h2>登录 CyberStrikeAI</h2>
                 <p class="login-subtitle">请输入配置中的访问密码</p>
             </div>
@@ -21,12 +21,7 @@
                     <input type="password" id="login-password" placeholder="输入登录密码" required autocomplete="current-password" />
                 </div>
                 <div id="login-error" class="login-error" role="alert" style="display: none;"></div>
-                <button type="submit" class="btn-primary login-submit">
-                    <span>登录</span>
-                    <svg class="login-submit-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </button>
+                <button type="submit" class="btn-primary login-submit">登录</button>
             </form>
         </div>
     </div>
@@ -304,7 +299,6 @@
                                                 <div class="dashboard-overview-content">
                                                     <div class="dashboard-overview-header">
                                                         <span class="dashboard-overview-label">知识</span>
-                                                        <span class="dashboard-overview-status" id="dashboard-knowledge-status">-</span>
                                                     </div>
                                                     <div class="dashboard-overview-value-group">
                                                         <span class="dashboard-overview-value-large" id="dashboard-knowledge-items">-</span>

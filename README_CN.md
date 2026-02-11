@@ -519,6 +519,9 @@ CyberStrikeAI 现已加入 [404星链计划](https://github.com/knownsec/404Star
   </a>
 </div>
 
+## Stargazers over time
+![Stargazers over time](https://starchart.cc/Ed1s0nZ/CyberStrikeAI.svg)
+
 ---
 
 欢迎提交 Issue/PR 贡献新的工具模版或优化建议！

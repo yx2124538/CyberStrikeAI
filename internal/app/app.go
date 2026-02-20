@@ -511,6 +511,8 @@ func setupRoutes(
 
 		// 信息收集 - FOFA 查询（后端代理）
 		protected.POST("/fofa/search", fofaHandler.Search)
+		// 信息收集 - 自然语言解析为 FOFA 语法（需人工确认后再查询）
+		protected.POST("/fofa/parse", fofaHandler.ParseNaturalLanguage)
 
 		// 批量任务管理
 		protected.POST("/batch-tasks", agentHandler.CreateBatchQueue)

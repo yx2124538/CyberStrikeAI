@@ -10,6 +10,11 @@ const infoCollectState = {
     tableBound: false
 };
 
+// AI 解析（自然语言 -> FOFA）交互状态
+let fofaParseAbortController = null;
+let fofaParseSlowTimer = null;
+let fofaParseToastHandle = null;
+
 // HTML转义（如果未定义）
 if (typeof escapeHtml === 'undefined') {
     function escapeHtml(text) {
@@ -23,6 +28,7 @@ if (typeof escapeHtml === 'undefined') {
 function getFofaFormElements() {
     return {
         query: document.getElementById('fofa-query'),
+        nl: document.getElementById('fofa-nl'),
         size: document.getElementById('fofa-size'),
         page: document.getElementById('fofa-page'),
         fields: document.getElementById('fofa-fields'),
@@ -101,20 +107,35 @@ function initInfoCollectPage() {
         }
     });
 
-    // 单行输入：按内容自动增高（避免默认留空白行）
-    const autoGrow = () => {
+    // 自然语言输入：Ctrl/Cmd+Enter 触发解析
+    if (els.nl) {
+        els.nl.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                parseFofaNaturalLanguage();
+            }
+        });
+    }
+
+    // textarea：按内容自动增高（避免默认留空白行）
+    const autoGrowTextarea = (el) => {
+        if (!el) return;
         try {
-            els.query.style.height = '40px';
-            const max = 110;
-            const h = Math.min(max, els.query.scrollHeight);
-            els.query.style.height = `${h}px`;
+            el.style.height = '36px';
+            const max = 96;
+            const h = Math.min(max, el.scrollHeight);
+            el.style.height = `${h}px`;
         } catch (e) {
             // ignore
         }
     };
-    els.query.addEventListener('input', autoGrow);
+    els.query.addEventListener('input', () => autoGrowTextarea(els.query));
+    if (els.nl) els.nl.addEventListener('input', () => autoGrowTextarea(els.nl));
     // 初始化时也执行一次
-    setTimeout(autoGrow, 0);
+    setTimeout(() => {
+        autoGrowTextarea(els.query);
+        autoGrowTextarea(els.nl);
+    }, 0);
 
     // 绑定表格事件（事件委托，只绑定一次）
     bindFofaTableEvents();
@@ -204,6 +225,213 @@ async function submitFofaSearch() {
     } finally {
         setFofaLoading(false);
     }
+}
+
+async function parseFofaNaturalLanguage() {
+    const els = getFofaFormElements();
+    const text = (els.nl?.value || '').trim();
+    if (!text) {
+        alert('请输入自然语言描述');
+        return;
+    }
+
+    // 二次点击：取消进行中的解析（避免“以为卡死/失败”）
+    if (fofaParseAbortController) {
+        try { fofaParseAbortController.abort(); } catch (e) { /* ignore */ }
+        return;
+    }
+
+    // 先创建 controller，避免极快的重复点击触发并发请求
+    fofaParseAbortController = new AbortController();
+    setFofaParseLoading(true, 'AI 解析中...');
+
+    // 持续提示：直到请求完成/取消/失败才消失
+    fofaParseToastHandle = showInlineToast('AI 解析中...（点击按钮可取消）', { duration: 0, id: 'fofa-parse-pending' });
+
+    // 如果超过一小段时间还没返回，再强调“仍在进行中”，降低误判为失败的概率
+    fofaParseSlowTimer = setTimeout(() => {
+        const status = document.getElementById('fofa-nl-status');
+        if (status) {
+            status.textContent = 'AI 解析耗时较长，仍在处理中…';
+            status.style.display = 'block';
+        }
+    }, 1800);
+
+    try {
+        const resp = await apiFetch('/api/fofa/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+            signal: fofaParseAbortController.signal
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            throw new Error(result.error || `请求失败: ${resp.status}`);
+        }
+        showFofaParseModal(text, result);
+        showInlineToast('AI 解析完成');
+    } catch (e) {
+        // AbortController 取消：不视为失败
+        if (e && (e.name === 'AbortError' || String(e).includes('AbortError'))) {
+            showInlineToast('已取消 AI 解析');
+            return;
+        }
+        console.error('FOFA 自然语言解析失败:', e);
+        showInlineToast('AI 解析失败：' + (e && e.message ? e.message : String(e)), { duration: 2800 });
+    }
+    finally {
+        fofaParseAbortController = null;
+        if (fofaParseSlowTimer) {
+            clearTimeout(fofaParseSlowTimer);
+            fofaParseSlowTimer = null;
+        }
+        if (fofaParseToastHandle && typeof fofaParseToastHandle.remove === 'function') {
+            fofaParseToastHandle.remove();
+        }
+        fofaParseToastHandle = null;
+        setFofaParseLoading(false, '');
+    }
+}
+
+function setFofaParseLoading(loading, statusText) {
+    const btn = document.getElementById('fofa-nl-parse-btn');
+    const status = document.getElementById('fofa-nl-status');
+    if (btn) {
+        if (loading) {
+            if (!btn.dataset.originalText) btn.dataset.originalText = btn.textContent || 'AI 解析';
+            btn.classList.add('btn-loading');
+            btn.textContent = '取消解析';
+            btn.title = '点击取消 AI 解析';
+            btn.dataset.loading = '1';
+            btn.setAttribute('aria-busy', 'true');
+            btn.disabled = false;
+        } else {
+            btn.classList.remove('btn-loading');
+            btn.textContent = btn.dataset.originalText || 'AI 解析';
+            btn.title = '将自然语言解析为 FOFA 查询语法';
+            btn.disabled = false;
+            delete btn.dataset.loading;
+            btn.removeAttribute('aria-busy');
+        }
+    }
+    if (status) {
+        const text = (statusText || '').trim();
+        if (loading && text) {
+            status.textContent = text;
+            status.style.display = 'block';
+        } else {
+            status.textContent = '';
+            status.style.display = 'none';
+        }
+    }
+}
+
+function showFofaParseModal(nlText, parsed) {
+    const existing = document.getElementById('fofa-parse-modal');
+    if (existing) existing.remove();
+
+    const safeNL = escapeHtml((nlText || '').trim());
+    const warnings = Array.isArray(parsed?.warnings) ? parsed.warnings.filter(Boolean).map(x => String(x)) : [];
+    const explanation = parsed?.explanation != null ? String(parsed.explanation) : '';
+
+    const warningsHtml = warnings.length
+        ? `<ul style="margin: 8px 0 0 18px;">${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`
+        : `<div class="muted" style="margin-top: 8px;">无</div>`;
+
+    const modal = document.createElement('div');
+    modal.id = 'fofa-parse-modal';
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2>AI 解析结果</h2>
+                <span class="modal-close" id="fofa-parse-modal-close" title="关闭">&times;</span>
+            </div>
+            <div style="padding: 18px 28px; overflow: auto;">
+                <div class="form-group">
+                    <label>自然语言</label>
+                    <div class="muted" style="margin-top: 6px; white-space: pre-wrap;">${safeNL || '-'}</div>
+                </div>
+
+                <div class="form-group" style="margin-top: 14px;">
+                    <label for="fofa-parse-query">FOFA 查询语法（可编辑）</label>
+                    <textarea id="fofa-parse-query" class="info-collect-query-input" rows="2" placeholder='例如：app="Apache" && country="CN"'></textarea>
+                    <small class="form-hint">请人工确认语法与范围无误后再执行查询。</small>
+                </div>
+
+                <div class="form-group" style="margin-top: 14px;">
+                    <label>提醒</label>
+                    <div style="background: #fff8e1; border: 1px solid #ffe8a3; border-radius: 10px; padding: 10px 12px;">
+                        ${warningsHtml}
+                    </div>
+                </div>
+
+                ${explanation ? `
+                <div class="form-group" style="margin-top: 14px;">
+                    <label>解析说明</label>
+                    <pre style="margin-top: 8px; white-space: pre-wrap; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; font-size: 13px;">${escapeHtml(explanation)}</pre>
+                </div>` : ''}
+            </div>
+            <div class="modal-footer" style="padding: 18px 28px;">
+                <button class="btn-secondary" type="button" id="fofa-parse-cancel">取消</button>
+                <button class="btn-secondary" type="button" id="fofa-parse-apply">填入查询框</button>
+                <button class="btn-primary" type="button" id="fofa-parse-apply-run">填入并查询</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const queryTextarea = document.getElementById('fofa-parse-query');
+    if (queryTextarea) {
+        queryTextarea.value = (parsed?.query || '').trim();
+        setTimeout(() => {
+            try { queryTextarea.focus(); } catch (e) { /* ignore */ }
+        }, 0);
+    }
+
+    const close = () => modal.remove();
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) close();
+    });
+    document.getElementById('fofa-parse-modal-close')?.addEventListener('click', close);
+    document.getElementById('fofa-parse-cancel')?.addEventListener('click', close);
+
+    const applyToQuery = (run) => {
+        const els = getFofaFormElements();
+        const q = (queryTextarea?.value || '').trim();
+        if (!q) {
+            showInlineToast('解析结果为空：请在弹窗中补充/修改 FOFA 查询语法', { duration: 2600 });
+            return;
+        }
+        if (els.query) {
+            els.query.value = q;
+            try { els.query.focus(); } catch (e) { /* ignore */ }
+        }
+        // 写入表单缓存（与现有“直接查询”一致）
+        saveFofaFormToStorage({
+            query: q,
+            size: parseInt(els.size?.value, 10) || 100,
+            page: parseInt(els.page?.value, 10) || 1,
+            fields: (els.fields?.value || '').trim(),
+            full: !!els.full?.checked
+        });
+        close();
+        if (run) submitFofaSearch();
+    };
+
+    document.getElementById('fofa-parse-apply')?.addEventListener('click', () => applyToQuery(false));
+    document.getElementById('fofa-parse-apply-run')?.addEventListener('click', () => applyToQuery(true));
+
+    // Esc 关闭
+    const onKey = (e) => {
+        if (e.key === 'Escape') {
+            close();
+            document.removeEventListener('keydown', onKey);
+        }
+    };
+    document.addEventListener('keydown', onKey);
 }
 
 function setFofaMeta(text) {
@@ -393,12 +621,35 @@ function copyFofaTargetEncoded(encodedTarget) {
     }
 }
 
-function showInlineToast(text) {
+// showInlineToast('xxx')；也支持 showInlineToast('xxx', { duration: 0, id: '...' })
+function showInlineToast(text, options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const duration = typeof opts.duration === 'number' ? opts.duration : 1200;
+    const id = typeof opts.id === 'string' && opts.id.trim() ? opts.id.trim() : '';
+    const replace = opts.replace !== false;
+
+    if (id && replace) {
+        document.getElementById(id)?.remove();
+    }
+
     const toast = document.createElement('div');
-    toast.textContent = text;
-    toast.style.cssText = 'position: fixed; top: 24px; right: 24px; background: rgba(0,0,0,0.85); color: #fff; padding: 10px 12px; border-radius: 8px; z-index: 10000; font-size: 13px;';
+    if (id) toast.id = id;
+    toast.textContent = String(text == null ? '' : text);
+    toast.style.cssText = 'position: fixed; top: 24px; right: 24px; background: rgba(0,0,0,0.85); color: #fff; padding: 10px 12px; border-radius: 8px; z-index: 10000; font-size: 13px; max-width: 420px; line-height: 1.4; box-shadow: 0 6px 18px rgba(0,0,0,0.22);';
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 1200);
+
+    let timer = null;
+    const remove = () => {
+        try { if (timer) clearTimeout(timer); } catch (e) { /* ignore */ }
+        timer = null;
+        try { toast.remove(); } catch (e) { /* ignore */ }
+    };
+
+    if (duration > 0) {
+        timer = setTimeout(remove, duration);
+    }
+
+    return { el: toast, remove };
 }
 
 function scanFofaRow(encodedRowJson, clickEvent) {
@@ -787,6 +1038,7 @@ function showCellDetailModal(field, fullText) {
 window.initInfoCollectPage = initInfoCollectPage;
 window.resetFofaForm = resetFofaForm;
 window.submitFofaSearch = submitFofaSearch;
+window.parseFofaNaturalLanguage = parseFofaNaturalLanguage;
 window.scanFofaRow = scanFofaRow;
 window.copyFofaTarget = copyFofaTarget;
 window.copyFofaTargetEncoded = copyFofaTargetEncoded;

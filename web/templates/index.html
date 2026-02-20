@@ -756,6 +756,15 @@
                                         <button class="preset-chip" type="button" onclick="applyFofaQueryPreset('ip=&quot;1.1.1.1&quot;')" title="填入示例">指定 IP</button>
                                     </div>
                                 </div>
+                                <div class="form-group">
+                                    <label for="fofa-nl">自然语言（AI 解析为 FOFA 语法）</label>
+                                    <div class="info-collect-nl-row">
+                                        <textarea id="fofa-nl" class="info-collect-query-input" rows="1" placeholder="例如：找美国 Missouri 的 Apache 站点，标题包含 Home"></textarea>
+                                        <button id="fofa-nl-parse-btn" class="btn-secondary" type="button" onclick="parseFofaNaturalLanguage()" title="将自然语言解析为 FOFA 查询语法">AI 解析</button>
+                                    </div>
+                                    <div id="fofa-nl-status" class="fofa-nl-status muted" style="display: none;" aria-live="polite"></div>
+                                    <small class="form-hint">解析后会弹窗展示 FOFA 语法（可编辑），确认无误后再填入查询框并执行查询。</small>
+                                </div>
                                 <div class="info-collect-form-row">
                                     <div class="form-group">
                                         <label for="fofa-size">返回数量</label>

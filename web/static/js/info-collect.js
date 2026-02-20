@@ -952,10 +952,17 @@ async function batchScanSelectedFofaRows() {
 
     const title = (p.query ? `FOFA 批量扫描：${p.query}` : 'FOFA 批量扫描').slice(0, 80);
     try {
+        // 不强制切换到“信息收集”角色：沿用当前已选角色；若为默认则传空字符串交给后端走默认逻辑
+        let role = '';
+        if (typeof getCurrentRole === 'function') {
+            try { role = getCurrentRole() || ''; } catch (e) { /* ignore */ }
+        }
+        if (role === '默认') role = '';
+
         const resp = await apiFetch('/api/batch-tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, tasks, role: '信息收集' })
+            body: JSON.stringify({ title, tasks, role })
         });
         const result = await resp.json().catch(() => ({}));
         if (!resp.ok) {

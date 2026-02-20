@@ -854,6 +854,7 @@ func (h *ConfigHandler) saveConfig() error {
 	updateAgentConfig(root, h.config.Agent.MaxIterations)
 	updateMCPConfig(root, h.config.MCP)
 	updateOpenAIConfig(root, h.config.OpenAI)
+	updateFOFAConfig(root, h.config.FOFA)
 	updateKnowledgeConfig(root, h.config.Knowledge)
 	// 更新外部MCP配置（使用external_mcp.go中的函数，同一包中可直接调用）
 	// 读取原始配置以保持向后兼容
@@ -996,6 +997,14 @@ func updateOpenAIConfig(doc *yaml.Node, cfg config.OpenAIConfig) {
 	setStringInMap(openaiNode, "api_key", cfg.APIKey)
 	setStringInMap(openaiNode, "base_url", cfg.BaseURL)
 	setStringInMap(openaiNode, "model", cfg.Model)
+}
+
+func updateFOFAConfig(doc *yaml.Node, cfg config.FofaConfig) {
+	root := doc.Content[0]
+	fofaNode := ensureMap(root, "fofa")
+	setStringInMap(fofaNode, "base_url", cfg.BaseURL)
+	setStringInMap(fofaNode, "email", cfg.Email)
+	setStringInMap(fofaNode, "api_key", cfg.APIKey)
 }
 
 func updateKnowledgeConfig(doc *yaml.Node, cfg config.KnowledgeConfig) {

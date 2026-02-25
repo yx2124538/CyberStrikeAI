@@ -933,14 +933,32 @@ function exportFofaResults(format) {
         return;
     }
 
-    // csv：默认导出可见字段（更符合“列隐藏”直觉）
+    if (format === 'xlsx') {
+        // 使用 SheetJS 生成 XLSX（需在页面中引入 xlsx 库）
+        if (typeof XLSX === 'undefined') {
+            alert('未加载 XLSX 库，请刷新页面后重试');
+            return;
+        }
+        const aoa = [visibleFields].concat(p.results.map(row => {
+            const r = row && typeof row === 'object' ? row : {};
+            return visibleFields.map(f => r[f] != null ? r[f] : '');
+        }));
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'FOFA结果');
+        XLSX.writeFile(wb, `fofa_results_${ts}.xlsx`);
+        return;
+    }
+
+    // csv：默认导出可见字段，带 UTF-8 BOM 以兼容 Excel 中文
     const header = visibleFields;
     const rows = p.results.map(row => {
         const r = row && typeof row === 'object' ? row : {};
         return header.map(f => csvEscape(r[f]));
     });
     const csv = [header.map(csvEscape).join(','), ...rows.map(cols => cols.join(','))].join('\n');
-    downloadBlob(csv, `fofa_results_${ts}.csv`, 'text/csv;charset=utf-8');
+    const csvWithBom = '\uFEFF' + csv;
+    downloadBlob(csvWithBom, `fofa_results_${ts}.csv`, 'text/csv;charset=utf-8');
 }
 
 function csvEscape(value) {

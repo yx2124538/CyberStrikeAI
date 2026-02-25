@@ -803,8 +803,9 @@
                                 <div class="info-collect-results-toolbar" aria-label="结果工具条">
                                     <div class="info-collect-selected" id="fofa-selected-meta">已选择 0 条</div>
                                     <button class="btn-secondary btn-small" type="button" onclick="toggleFofaColumnsPanel()" title="显示/隐藏字段">列</button>
-                                    <button class="btn-secondary btn-small" type="button" onclick="exportFofaResults('csv')" title="导出当前结果为 CSV">导出 CSV</button>
+                                    <button class="btn-secondary btn-small" type="button" onclick="exportFofaResults('csv')" title="导出当前结果为 CSV（UTF-8，兼容中文）">导出 CSV</button>
                                     <button class="btn-secondary btn-small" type="button" onclick="exportFofaResults('json')" title="导出当前结果为 JSON">导出 JSON</button>
+                                    <button class="btn-secondary btn-small" type="button" onclick="exportFofaResults('xlsx')" title="导出当前结果为 Excel">导出 XLSX</button>
                                     <button class="btn-primary btn-small" type="button" onclick="batchScanSelectedFofaRows()" title="将所选行创建为批量任务队列">批量扫描</button>
                                 </div>
                             </div>
@@ -1472,6 +1473,8 @@
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.27.0/dist/cytoscape.min.js"></script>
     <!-- ELK.js for high-quality DAG layout (reduces edge crossings) -->
     <script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.2/lib/elk.bundled.js"></script>
+    <!-- SheetJS for XLSX export (info-collect) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script>
         // 确保ELK对象全局可用
         if (typeof ELK === 'undefined' && typeof elk !== 'undefined') {

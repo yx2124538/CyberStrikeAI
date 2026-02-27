@@ -19,8 +19,9 @@ type larkTextContent struct {
 	Text string `json:"text"`
 }
 
-// StartLark 启动飞书长连接（无需公网），收到消息后调用 handler 并回复
-func StartLark(cfg config.RobotLarkConfig, h MessageHandler, logger *zap.Logger) {
+// StartLark 启动飞书长连接（无需公网），收到消息后调用 handler 并回复。
+// ctx 被取消时长连接会退出，便于配置变更时重启。
+func StartLark(ctx context.Context, cfg config.RobotLarkConfig, h MessageHandler, logger *zap.Logger) {
 	if !cfg.Enabled || cfg.AppID == "" || cfg.AppSecret == "" {
 		return
 	}
@@ -34,9 +35,11 @@ func StartLark(cfg config.RobotLarkConfig, h MessageHandler, logger *zap.Logger)
 		larkws.WithLogLevel(larkcore.LogLevelInfo),
 	)
 	go func() {
-		err := wsClient.Start(context.Background())
-		if err != nil {
+		err := wsClient.Start(ctx)
+		if err != nil && ctx.Err() == nil {
 			logger.Error("飞书长连接退出", zap.Error(err))
+		} else if ctx.Err() != nil {
+			logger.Info("飞书长连接已按配置重启关闭")
 		}
 	}()
 	logger.Info("飞书长连接已启动（无需公网）", zap.String("app_id", cfg.AppID))

@@ -15,8 +15,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// StartDing 启动钉钉 Stream 长连接（无需公网），收到消息后调用 handler 并通过 SessionWebhook 回复
-func StartDing(cfg config.RobotDingtalkConfig, h MessageHandler, logger *zap.Logger) {
+// StartDing 启动钉钉 Stream 长连接（无需公网），收到消息后调用 handler 并通过 SessionWebhook 回复。
+// ctx 被取消时长连接会退出，便于配置变更时重启。
+func StartDing(ctx context.Context, cfg config.RobotDingtalkConfig, h MessageHandler, logger *zap.Logger) {
 	if !cfg.Enabled || cfg.ClientID == "" || cfg.ClientSecret == "" {
 		return
 	}
@@ -30,9 +31,11 @@ func StartDing(cfg config.RobotDingtalkConfig, h MessageHandler, logger *zap.Log
 	)
 	logger.Info("钉钉 Stream 正在连接…", zap.String("client_id", cfg.ClientID))
 	go func() {
-		err := streamClient.Start(context.Background())
-		if err != nil {
+		err := streamClient.Start(ctx)
+		if err != nil && ctx.Err() == nil {
 			logger.Error("钉钉 Stream 长连接退出", zap.Error(err))
+		} else if ctx.Err() != nil {
+			logger.Info("钉钉 Stream 已按配置重启关闭")
 		}
 	}()
 	logger.Info("钉钉 Stream 已启动（无需公网），等待收消息", zap.String("client_id", cfg.ClientID))

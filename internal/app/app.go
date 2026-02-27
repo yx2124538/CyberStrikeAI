@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"cyberstrike-ai/internal/agent"
@@ -44,6 +45,10 @@ type App struct {
 	knowledgeIndexer   *knowledge.Indexer        // 知识库索引器（用于动态初始化）
 	knowledgeHandler   *handler.KnowledgeHandler // 知识库处理器（用于动态初始化）
 	agentHandler       *handler.AgentHandler     // Agent处理器（用于更新知识库管理器）
+	robotHandler       *handler.RobotHandler     // 机器人处理器（钉钉/飞书/企业微信）
+	robotMu            sync.Mutex                 // 保护钉钉/飞书长连接的 cancel
+	dingCancel         context.CancelFunc        // 钉钉 Stream 取消函数，用于配置变更时重启
+	larkCancel         context.CancelFunc        // 飞书长连接取消函数，用于配置变更时重启
 }
 
 // New 创建新应用
@@ -327,13 +332,6 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 	// 创建OpenAPI处理器
 	conversationHandler := handler.NewConversationHandler(db, log.Logger)
 	robotHandler := handler.NewRobotHandler(cfg, db, agentHandler, log.Logger)
-	// 飞书/钉钉长连接（无需公网），启用时在后台启动
-	if cfg.Robots.Lark.Enabled && cfg.Robots.Lark.AppID != "" && cfg.Robots.Lark.AppSecret != "" {
-		go robot.StartLark(cfg.Robots.Lark, robotHandler, log.Logger)
-	}
-	if cfg.Robots.Dingtalk.Enabled && cfg.Robots.Dingtalk.ClientID != "" && cfg.Robots.Dingtalk.ClientSecret != "" {
-		go robot.StartDing(cfg.Robots.Dingtalk, robotHandler, log.Logger)
-	}
 	openAPIHandler := handler.NewOpenAPIHandler(db, log.Logger, resultStorage, conversationHandler, agentHandler)
 
 	// 创建 App 实例（部分字段稍后填充）
@@ -353,7 +351,10 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 		knowledgeIndexer:   knowledgeIndexer,
 		knowledgeHandler:   knowledgeHandler,
 		agentHandler:       agentHandler,
+		robotHandler:       robotHandler,
 	}
+	// 飞书/钉钉长连接（无需公网），启用时在后台启动；后续前端应用配置时会通过 RestartRobotConnections 重启
+	app.startRobotConnections()
 
 	// 设置漏洞工具注册器（内置工具，必须设置）
 	vulnerabilityRegistrar := func() error {
@@ -410,6 +411,9 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 		configHandler.SetRetrieverUpdater(knowledgeRetriever)
 	}
 
+	// 设置机器人连接重启器，前端应用配置后无需重启服务即可使钉钉/飞书新配置生效
+	configHandler.SetRobotRestarter(app)
+
 	// 设置路由（使用 App 实例以便动态获取 handler）
 	setupRoutes(
 		router,
@@ -462,6 +466,18 @@ func (a *App) Run() error {
 
 // Shutdown 关闭应用
 func (a *App) Shutdown() {
+	// 停止钉钉/飞书长连接
+	a.robotMu.Lock()
+	if a.dingCancel != nil {
+		a.dingCancel()
+		a.dingCancel = nil
+	}
+	if a.larkCancel != nil {
+		a.larkCancel()
+		a.larkCancel = nil
+	}
+	a.robotMu.Unlock()
+
 	// 停止所有外部MCP客户端
 	if a.externalMCPMgr != nil {
 		a.externalMCPMgr.StopAll()
@@ -473,6 +489,40 @@ func (a *App) Shutdown() {
 			a.logger.Logger.Warn("关闭知识库数据库连接失败", zap.Error(err))
 		}
 	}
+}
+
+// startRobotConnections 根据当前配置启动钉钉/飞书长连接（不先关闭已有连接，仅用于首次启动）
+func (a *App) startRobotConnections() {
+	a.robotMu.Lock()
+	defer a.robotMu.Unlock()
+	cfg := a.config
+	if cfg.Robots.Lark.Enabled && cfg.Robots.Lark.AppID != "" && cfg.Robots.Lark.AppSecret != "" {
+		ctx, cancel := context.WithCancel(context.Background())
+		a.larkCancel = cancel
+		go robot.StartLark(ctx, cfg.Robots.Lark, a.robotHandler, a.logger.Logger)
+	}
+	if cfg.Robots.Dingtalk.Enabled && cfg.Robots.Dingtalk.ClientID != "" && cfg.Robots.Dingtalk.ClientSecret != "" {
+		ctx, cancel := context.WithCancel(context.Background())
+		a.dingCancel = cancel
+		go robot.StartDing(ctx, cfg.Robots.Dingtalk, a.robotHandler, a.logger.Logger)
+	}
+}
+
+// RestartRobotConnections 重启钉钉/飞书长连接，使前端应用配置后立即生效（实现 handler.RobotRestarter）
+func (a *App) RestartRobotConnections() {
+	a.robotMu.Lock()
+	if a.dingCancel != nil {
+		a.dingCancel()
+		a.dingCancel = nil
+	}
+	if a.larkCancel != nil {
+		a.larkCancel()
+		a.larkCancel = nil
+	}
+	a.robotMu.Unlock()
+	// 给旧 goroutine 一点时间退出
+	time.Sleep(200 * time.Millisecond)
+	a.startRobotConnections()
 }
 
 // setupRoutes 设置路由

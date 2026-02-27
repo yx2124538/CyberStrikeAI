@@ -44,6 +44,11 @@ type AppUpdater interface {
 	UpdateKnowledgeComponents(handler *KnowledgeHandler, manager interface{}, retriever interface{}, indexer interface{})
 }
 
+// RobotRestarter 机器人连接重启器（用于配置应用后重启钉钉/飞书长连接）
+type RobotRestarter interface {
+	RestartRobotConnections()
+}
+
 // ConfigHandler 配置处理器
 type ConfigHandler struct {
 	configPath                 string
@@ -59,6 +64,7 @@ type ConfigHandler struct {
 	retrieverUpdater           RetrieverUpdater           // 检索器更新器（可选）
 	knowledgeInitializer       KnowledgeInitializer       // 知识库初始化器（可选）
 	appUpdater                 AppUpdater                 // App更新器（可选）
+	robotRestarter             RobotRestarter             // 机器人连接重启器（可选），ApplyConfig 时重启钉钉/飞书
 	logger                     *zap.Logger
 	mu                         sync.RWMutex
 	lastEmbeddingConfig        *config.EmbeddingConfig // 上一次的嵌入模型配置（用于检测变更）
@@ -140,6 +146,13 @@ func (h *ConfigHandler) SetAppUpdater(updater AppUpdater) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.appUpdater = updater
+}
+
+// SetRobotRestarter 设置机器人连接重启器（ApplyConfig 时用于重启钉钉/飞书长连接）
+func (h *ConfigHandler) SetRobotRestarter(restarter RobotRestarter) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.robotRestarter = restarter
 }
 
 // GetConfigResponse 获取配置响应
@@ -835,6 +848,12 @@ func (h *ConfigHandler) ApplyConfig(c *gin.Context) {
 			BaseURL:  h.config.Knowledge.Embedding.BaseURL,
 			APIKey:   h.config.Knowledge.Embedding.APIKey,
 		}
+	}
+
+	// 重启钉钉/飞书长连接，使前端修改的机器人配置立即生效（无需重启服务）
+	if h.robotRestarter != nil {
+		h.robotRestarter.RestartRobotConnections()
+		h.logger.Info("已触发机器人连接重启（钉钉/飞书）")
 	}
 
 	h.logger.Info("配置已应用",

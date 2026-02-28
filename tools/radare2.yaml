@@ -46,8 +46,9 @@ parameters:
       **注意事项：**
       - 必需参数，不能为空
       - 如果指定进程ID，需要配合 -d 参数使用
+      - 注意：radare2 要求文件路径必须是最后一个参数，因此 target 使用 position 1
     required: true
-    position: 0
+    position: 1
     format: "positional"
   - name: "commands"
     type: "string"

@@ -48,3 +48,7 @@ require (
 	golang.org/x/text v0.13.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
+
+// 修复钉钉 Stream SDK 在长连接断开（熄屏/网络中断）后 "panic: send on closed channel" 问题
+// 详见: https://github.com/open-dingtalk/dingtalk-stream-sdk-go/issues/28
+replace github.com/open-dingtalk/dingtalk-stream-sdk-go => github.com/uouuou/dingtalk-stream-sdk-go v0.0.0-20250626025113-079132acc406

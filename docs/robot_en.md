@@ -112,6 +112,7 @@ Send these **text commands** to the bot in DingTalk or Lark (text only):
 | **新对话** (new) | Start a new conversation |
 | **清空** (clear) | Clear current context (same effect as new conversation) |
 | **当前** (current) | Show current conversation ID and title |
+| **停止** (stop) | Abort the currently running task |
 
 Any other text is sent to the AI as a user message, same as in the web UI (e.g. penetration testing, security analysis).
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/aes"
+	"errors"
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
@@ -22,34 +23,38 @@ import (
 )
 
 const (
-	robotCmdHelp    = "帮助"
-	robotCmdList    = "列表"
-	robotCmdListAlt = "对话列表"
-	robotCmdSwitch  = "切换"
+	robotCmdHelp     = "帮助"
+	robotCmdList     = "列表"
+	robotCmdListAlt  = "对话列表"
+	robotCmdSwitch   = "切换"
 	robotCmdContinue = "继续"
-	robotCmdNew     = "新对话"
-	robotCmdClear   = "清空"
-	robotCmdCurrent = "当前"
+	robotCmdNew      = "新对话"
+	robotCmdClear    = "清空"
+	robotCmdCurrent  = "当前"
+	robotCmdStop     = "停止"
 )
 
 // RobotHandler 企业微信/钉钉/飞书等机器人回调处理
 type RobotHandler struct {
-	config       *config.Config
-	db           *database.DB
-	agentHandler *AgentHandler
-	logger       *zap.Logger
-	mu           sync.RWMutex
-	sessions     map[string]string // key: "platform_userID", value: conversationID
+	config         *config.Config
+	db             *database.DB
+	agentHandler   *AgentHandler
+	logger         *zap.Logger
+	mu             sync.RWMutex
+	sessions       map[string]string             // key: "platform_userID", value: conversationID
+	cancelMu       sync.Mutex                    // 保护 runningCancels
+	runningCancels map[string]context.CancelFunc // key: "platform_userID", 用于停止命令中断任务
 }
 
 // NewRobotHandler 创建机器人处理器
 func NewRobotHandler(cfg *config.Config, db *database.DB, agentHandler *AgentHandler, logger *zap.Logger) *RobotHandler {
 	return &RobotHandler{
-		config:       cfg,
-		db:           db,
-		agentHandler: agentHandler,
-		logger:       logger,
-		sessions:     make(map[string]string),
+		config:         cfg,
+		db:             db,
+		agentHandler:   agentHandler,
+		logger:         logger,
+		sessions:       make(map[string]string),
+		runningCancels: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -58,15 +63,21 @@ func (h *RobotHandler) sessionKey(platform, userID string) string {
 	return platform + "_" + userID
 }
 
-// getOrCreateConversation 获取或创建当前会话
-func (h *RobotHandler) getOrCreateConversation(platform, userID string) (convID string, isNew bool) {
+// getOrCreateConversation 获取或创建当前会话，title 用于新对话的标题（取用户首条消息前50字）
+func (h *RobotHandler) getOrCreateConversation(platform, userID, title string) (convID string, isNew bool) {
 	h.mu.RLock()
 	convID = h.sessions[h.sessionKey(platform, userID)]
 	h.mu.RUnlock()
 	if convID != "" {
 		return convID, false
 	}
-	conv, err := h.db.CreateConversation("机器人对话")
+	t := strings.TrimSpace(title)
+	if t == "" {
+		t = "新对话 " + time.Now().Format("01-02 15:04")
+	} else {
+		t = safeTruncateString(t, 25)
+	}
+	conv, err := h.db.CreateConversation(t)
 	if err != nil {
 		h.logger.Warn("创建机器人会话失败", zap.Error(err))
 		return "", false
@@ -87,7 +98,8 @@ func (h *RobotHandler) setConversation(platform, userID, convID string) {
 
 // clearConversation 清空当前会话（切换到新对话）
 func (h *RobotHandler) clearConversation(platform, userID string) (newConvID string) {
-	conv, err := h.db.CreateConversation("新对话")
+	title := "新对话 " + time.Now().Format("01-02 15:04")
+	conv, err := h.db.CreateConversation(title)
 	if err != nil {
 		h.logger.Warn("创建新对话失败", zap.Error(err))
 		return ""
@@ -123,18 +135,32 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 		return h.cmdClear(platform, userID)
 	case text == robotCmdCurrent:
 		return h.cmdCurrent(platform, userID)
+	case text == robotCmdStop || text == "stop":
+		return h.cmdStop(platform, userID)
 	}
 
 	// 普通消息：走 Agent
-	convID, _ := h.getOrCreateConversation(platform, userID)
+	convID, _ := h.getOrCreateConversation(platform, userID, text)
 	if convID == "" {
 		return "无法创建或获取对话，请稍后再试。"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
+	sk := h.sessionKey(platform, userID)
+	h.cancelMu.Lock()
+	h.runningCancels[sk] = cancel
+	h.cancelMu.Unlock()
+	defer func() {
+		cancel()
+		h.cancelMu.Lock()
+		delete(h.runningCancels, sk)
+		h.cancelMu.Unlock()
+	}()
 	resp, newConvID, err := h.agentHandler.ProcessMessageForRobot(ctx, convID, text, "默认")
 	if err != nil {
 		h.logger.Warn("机器人 Agent 执行失败", zap.String("platform", platform), zap.String("userID", userID), zap.Error(err))
+		if errors.Is(err, context.Canceled) {
+			return "任务已取消。"
+		}
 		return "处理失败: " + err.Error()
 	}
 	if newConvID != convID {
@@ -151,6 +177,7 @@ func (h *RobotHandler) cmdHelp() string {
 · 新对话 — 开启新对话
 · 清空 — 清空当前上下文（等同于新对话）
 · 当前 — 显示当前对话 ID 与标题
+· 停止 — 中断当前正在执行的任务
 除以上命令外，直接输入内容将发送给 AI 进行渗透测试/安全分析。`
 }
 
@@ -196,6 +223,21 @@ func (h *RobotHandler) cmdNew(platform, userID string) string {
 
 func (h *RobotHandler) cmdClear(platform, userID string) string {
 	return h.cmdNew(platform, userID)
+}
+
+func (h *RobotHandler) cmdStop(platform, userID string) string {
+	sk := h.sessionKey(platform, userID)
+	h.cancelMu.Lock()
+	cancel, ok := h.runningCancels[sk]
+	if ok {
+		delete(h.runningCancels, sk)
+		cancel()
+	}
+	h.cancelMu.Unlock()
+	if !ok {
+		return "当前没有正在执行的任务。"
+	}
+	return "已停止当前任务。"
 }
 
 func (h *RobotHandler) cmdCurrent(platform, userID string) string {

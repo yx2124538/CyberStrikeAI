@@ -113,6 +113,10 @@ Send these **text commands** to the bot in DingTalk or Lark (text only):
 | **清空** (clear) | Clear current context (same effect as new conversation) |
 | **当前** (current) | Show current conversation ID and title |
 | **停止** (stop) | Abort the currently running task |
+| **角色** or **角色列表** (roles) | List all available roles (penetration testing, CTF, Web scan, etc.) |
+| **角色 \<roleName\>** or **切换角色 \<roleName\>** | Switch to the specified role |
+| **删除 \<conversationID\>** | Delete the specified conversation |
+| **版本** (version) | Show current CyberStrikeAI version |
 
 Any other text is sent to the AI as a user message, same as in the web UI (e.g. penetration testing, security analysis).
 

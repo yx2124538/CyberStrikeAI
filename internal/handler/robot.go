@@ -3,14 +3,15 @@ package handler
 import (
 	"context"
 	"crypto/aes"
-	"errors"
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,15 +24,20 @@ import (
 )
 
 const (
-	robotCmdHelp     = "帮助"
-	robotCmdList     = "列表"
-	robotCmdListAlt  = "对话列表"
-	robotCmdSwitch   = "切换"
-	robotCmdContinue = "继续"
-	robotCmdNew      = "新对话"
-	robotCmdClear    = "清空"
-	robotCmdCurrent  = "当前"
-	robotCmdStop     = "停止"
+	robotCmdHelp        = "帮助"
+	robotCmdList        = "列表"
+	robotCmdListAlt     = "对话列表"
+	robotCmdSwitch      = "切换"
+	robotCmdContinue    = "继续"
+	robotCmdNew         = "新对话"
+	robotCmdClear       = "清空"
+	robotCmdCurrent     = "当前"
+	robotCmdStop        = "停止"
+	robotCmdRoles       = "角色"
+	robotCmdRolesList   = "角色列表"
+	robotCmdSwitchRole  = "切换角色"
+	robotCmdDelete      = "删除"
+	robotCmdVersion     = "版本"
 )
 
 // RobotHandler 企业微信/钉钉/飞书等机器人回调处理
@@ -42,6 +48,7 @@ type RobotHandler struct {
 	logger         *zap.Logger
 	mu             sync.RWMutex
 	sessions       map[string]string             // key: "platform_userID", value: conversationID
+	sessionRoles   map[string]string             // key: "platform_userID", value: roleName（默认"默认"）
 	cancelMu       sync.Mutex                    // 保护 runningCancels
 	runningCancels map[string]context.CancelFunc // key: "platform_userID", 用于停止命令中断任务
 }
@@ -54,6 +61,7 @@ func NewRobotHandler(cfg *config.Config, db *database.DB, agentHandler *AgentHan
 		agentHandler:   agentHandler,
 		logger:         logger,
 		sessions:       make(map[string]string),
+		sessionRoles:   make(map[string]string),
 		runningCancels: make(map[string]context.CancelFunc),
 	}
 }
@@ -75,7 +83,7 @@ func (h *RobotHandler) getOrCreateConversation(platform, userID, title string) (
 	if t == "" {
 		t = "新对话 " + time.Now().Format("01-02 15:04")
 	} else {
-		t = safeTruncateString(t, 25)
+		t = safeTruncateString(t, 50)
 	}
 	conv, err := h.db.CreateConversation(t)
 	if err != nil {
@@ -93,6 +101,24 @@ func (h *RobotHandler) getOrCreateConversation(platform, userID, title string) (
 func (h *RobotHandler) setConversation(platform, userID, convID string) {
 	h.mu.Lock()
 	h.sessions[h.sessionKey(platform, userID)] = convID
+	h.mu.Unlock()
+}
+
+// getRole 获取当前用户使用的角色，未设置时返回"默认"
+func (h *RobotHandler) getRole(platform, userID string) string {
+	h.mu.RLock()
+	role := h.sessionRoles[h.sessionKey(platform, userID)]
+	h.mu.RUnlock()
+	if role == "" {
+		return "默认"
+	}
+	return role
+}
+
+// setRole 设置当前用户使用的角色
+func (h *RobotHandler) setRole(platform, userID, roleName string) {
+	h.mu.Lock()
+	h.sessionRoles[h.sessionKey(platform, userID)] = roleName
 	h.mu.Unlock()
 }
 
@@ -120,7 +146,7 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 	case text == robotCmdHelp || text == "help" || text == "？" || text == "?":
 		return h.cmdHelp()
 	case text == robotCmdList || text == robotCmdListAlt:
-		return h.cmdList(userID)
+		return h.cmdList()
 	case strings.HasPrefix(text, robotCmdSwitch+" ") || strings.HasPrefix(text, robotCmdContinue+" "):
 		var id string
 		if strings.HasPrefix(text, robotCmdSwitch+" ") {
@@ -137,12 +163,34 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 		return h.cmdCurrent(platform, userID)
 	case text == robotCmdStop || text == "stop":
 		return h.cmdStop(platform, userID)
+	case text == robotCmdRoles || text == robotCmdRolesList:
+		return h.cmdRoles()
+	case strings.HasPrefix(text, robotCmdRoles+" ") || strings.HasPrefix(text, robotCmdSwitchRole+" "):
+		var roleName string
+		if strings.HasPrefix(text, robotCmdRoles+" ") {
+			roleName = strings.TrimSpace(text[len(robotCmdRoles)+1:])
+		} else {
+			roleName = strings.TrimSpace(text[len(robotCmdSwitchRole)+1:])
+		}
+		return h.cmdSwitchRole(platform, userID, roleName)
+	case strings.HasPrefix(text, robotCmdDelete+" "):
+		convID := strings.TrimSpace(text[len(robotCmdDelete)+1:])
+		return h.cmdDelete(platform, userID, convID)
+	case text == robotCmdVersion || text == "version":
+		return h.cmdVersion()
 	}
 
 	// 普通消息：走 Agent
 	convID, _ := h.getOrCreateConversation(platform, userID, text)
 	if convID == "" {
 		return "无法创建或获取对话，请稍后再试。"
+	}
+	// 若对话标题为「新对话 xx:xx」格式（由「新对话」命令创建），将标题更新为首条消息内容，与 Web 端体验一致
+	if conv, err := h.db.GetConversation(convID); err == nil && strings.HasPrefix(conv.Title, "新对话 ") {
+		newTitle := safeTruncateString(text, 50)
+		if newTitle != "" {
+			_ = h.db.UpdateConversationTitle(convID, newTitle)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	sk := h.sessionKey(platform, userID)
@@ -155,7 +203,8 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 		delete(h.runningCancels, sk)
 		h.cancelMu.Unlock()
 	}()
-	resp, newConvID, err := h.agentHandler.ProcessMessageForRobot(ctx, convID, text, "默认")
+	role := h.getRole(platform, userID)
+	resp, newConvID, err := h.agentHandler.ProcessMessageForRobot(ctx, convID, text, role)
 	if err != nil {
 		h.logger.Warn("机器人 Agent 执行失败", zap.String("platform", platform), zap.String("userID", userID), zap.Error(err))
 		if errors.Is(err, context.Canceled) {
@@ -178,10 +227,14 @@ func (h *RobotHandler) cmdHelp() string {
 · 清空 — 清空当前上下文（等同于新对话）
 · 当前 — 显示当前对话 ID 与标题
 · 停止 — 中断当前正在执行的任务
+· 角色 / 角色列表 — 列出所有可用角色
+· 角色 <角色名> / 切换角色 <角色名> — 切换当前角色
+· 删除 <对话ID> — 删除指定对话
+· 版本 — 显示当前版本号
 除以上命令外，直接输入内容将发送给 AI 进行渗透测试/安全分析。`
 }
 
-func (h *RobotHandler) cmdList(userID string) string {
+func (h *RobotHandler) cmdList() string {
 	convs, err := h.db.ListConversations(50, 0, "")
 	if err != nil {
 		return "获取对话列表失败: " + err.Error()
@@ -251,7 +304,89 @@ func (h *RobotHandler) cmdCurrent(platform, userID string) string {
 	if err != nil {
 		return "当前对话 ID: " + convID + "（获取标题失败）"
 	}
-	return fmt.Sprintf("当前对话：「%s」\nID: %s", conv.Title, conv.ID)
+	role := h.getRole(platform, userID)
+	return fmt.Sprintf("当前对话：「%s」\nID: %s\n当前角色: %s", conv.Title, conv.ID, role)
+}
+
+func (h *RobotHandler) cmdRoles() string {
+	if h.config.Roles == nil || len(h.config.Roles) == 0 {
+		return "暂无可用角色。"
+	}
+	names := make([]string, 0, len(h.config.Roles))
+	for name, role := range h.config.Roles {
+		if role.Enabled {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return "暂无可用角色。"
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if names[i] == "默认" {
+			return true
+		}
+		if names[j] == "默认" {
+			return false
+		}
+		return names[i] < names[j]
+	})
+	var b strings.Builder
+	b.WriteString("【角色列表】\n")
+	for _, name := range names {
+		role := h.config.Roles[name]
+		desc := role.Description
+		if desc == "" {
+			desc = "无描述"
+		}
+		b.WriteString(fmt.Sprintf("· %s — %s\n", name, desc))
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+func (h *RobotHandler) cmdSwitchRole(platform, userID, roleName string) string {
+	if roleName == "" {
+		return "请指定角色名称，例如：角色 渗透测试"
+	}
+	if h.config.Roles == nil {
+		return "暂无可用角色。"
+	}
+	role, exists := h.config.Roles[roleName]
+	if !exists {
+		return fmt.Sprintf("角色「%s」不存在。发送「角色」查看可用角色。", roleName)
+	}
+	if !role.Enabled {
+		return fmt.Sprintf("角色「%s」已禁用。", roleName)
+	}
+	h.setRole(platform, userID, roleName)
+	return fmt.Sprintf("已切换到角色：「%s」\n%s", roleName, role.Description)
+}
+
+func (h *RobotHandler) cmdDelete(platform, userID, convID string) string {
+	if convID == "" {
+		return "请指定对话 ID，例如：删除 xxx-xxx-xxx"
+	}
+	sk := h.sessionKey(platform, userID)
+	h.mu.RLock()
+	currentConvID := h.sessions[sk]
+	h.mu.RUnlock()
+	if convID == currentConvID {
+		// 删除当前对话时，先清空会话绑定
+		h.mu.Lock()
+		delete(h.sessions, sk)
+		h.mu.Unlock()
+	}
+	if err := h.db.DeleteConversation(convID); err != nil {
+		return "删除失败: " + err.Error()
+	}
+	return fmt.Sprintf("已删除对话 ID: %s", convID)
+}
+
+func (h *RobotHandler) cmdVersion() string {
+	v := h.config.Version
+	if v == "" {
+		v = "未知"
+	}
+	return "CyberStrikeAI " + v
 }
 
 // —————— 企业微信 ——————

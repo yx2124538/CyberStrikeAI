@@ -98,9 +98,23 @@ func handleDingMessage(ctx context.Context, msg *chatbot.BotCallbackDataModel, h
 		userID = msg.ConversationId
 	}
 	reply := h.HandleMessage("dingtalk", userID, content)
+	// 使用 markdown 类型以便正确展示标题、列表、代码块等格式
+	title := reply
+	if idx := strings.IndexAny(reply, "\n"); idx > 0 {
+		title = strings.TrimSpace(reply[:idx])
+	}
+	if len(title) > 50 {
+		title = title[:50] + "…"
+	}
+	if title == "" {
+		title = "回复"
+	}
 	body := map[string]interface{}{
-		"msgtype": "text",
-		"text":    map[string]string{"content": reply},
+		"msgtype": "markdown",
+		"markdown": map[string]string{
+			"title": title,
+			"text":  reply,
+		},
 	}
 	bodyBytes, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, msg.SessionWebhook, bytes.NewReader(bodyBytes))

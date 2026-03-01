@@ -138,43 +138,56 @@ func (h *RobotHandler) clearConversation(platform, userID string) (newConvID str
 func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "请输入内容或发送「帮助」查看命令。"
+		return "请输入内容或发送「帮助」/ help 查看命令。"
 	}
 
-	// 命令分发
+	// 命令分发（支持中英文）
 	switch {
 	case text == robotCmdHelp || text == "help" || text == "？" || text == "?":
 		return h.cmdHelp()
-	case text == robotCmdList || text == robotCmdListAlt:
+	case text == robotCmdList || text == robotCmdListAlt || text == "list":
 		return h.cmdList()
-	case strings.HasPrefix(text, robotCmdSwitch+" ") || strings.HasPrefix(text, robotCmdContinue+" "):
+	case strings.HasPrefix(text, robotCmdSwitch+" ") || strings.HasPrefix(text, robotCmdContinue+" ") || strings.HasPrefix(text, "switch ") || strings.HasPrefix(text, "continue "):
 		var id string
-		if strings.HasPrefix(text, robotCmdSwitch+" ") {
+		switch {
+		case strings.HasPrefix(text, robotCmdSwitch+" "):
 			id = strings.TrimSpace(text[len(robotCmdSwitch)+1:])
-		} else {
+		case strings.HasPrefix(text, robotCmdContinue+" "):
 			id = strings.TrimSpace(text[len(robotCmdContinue)+1:])
+		case strings.HasPrefix(text, "switch "):
+			id = strings.TrimSpace(text[7:])
+		default:
+			id = strings.TrimSpace(text[9:])
 		}
 		return h.cmdSwitch(platform, userID, id)
-	case text == robotCmdNew:
+	case text == robotCmdNew || text == "new":
 		return h.cmdNew(platform, userID)
-	case text == robotCmdClear:
+	case text == robotCmdClear || text == "clear":
 		return h.cmdClear(platform, userID)
-	case text == robotCmdCurrent:
+	case text == robotCmdCurrent || text == "current":
 		return h.cmdCurrent(platform, userID)
 	case text == robotCmdStop || text == "stop":
 		return h.cmdStop(platform, userID)
-	case text == robotCmdRoles || text == robotCmdRolesList:
+	case text == robotCmdRoles || text == robotCmdRolesList || text == "roles":
 		return h.cmdRoles()
-	case strings.HasPrefix(text, robotCmdRoles+" ") || strings.HasPrefix(text, robotCmdSwitchRole+" "):
+	case strings.HasPrefix(text, robotCmdRoles+" ") || strings.HasPrefix(text, robotCmdSwitchRole+" ") || strings.HasPrefix(text, "role "):
 		var roleName string
-		if strings.HasPrefix(text, robotCmdRoles+" ") {
+		switch {
+		case strings.HasPrefix(text, robotCmdRoles+" "):
 			roleName = strings.TrimSpace(text[len(robotCmdRoles)+1:])
-		} else {
+		case strings.HasPrefix(text, robotCmdSwitchRole+" "):
 			roleName = strings.TrimSpace(text[len(robotCmdSwitchRole)+1:])
+		default:
+			roleName = strings.TrimSpace(text[5:])
 		}
 		return h.cmdSwitchRole(platform, userID, roleName)
-	case strings.HasPrefix(text, robotCmdDelete+" "):
-		convID := strings.TrimSpace(text[len(robotCmdDelete)+1:])
+	case strings.HasPrefix(text, robotCmdDelete+" ") || strings.HasPrefix(text, "delete "):
+		var convID string
+		if strings.HasPrefix(text, robotCmdDelete+" ") {
+			convID = strings.TrimSpace(text[len(robotCmdDelete)+1:])
+		} else {
+			convID = strings.TrimSpace(text[7:])
+		}
 		return h.cmdDelete(platform, userID, convID)
 	case text == robotCmdVersion || text == "version":
 		return h.cmdVersion()
@@ -219,19 +232,20 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 }
 
 func (h *RobotHandler) cmdHelp() string {
-	return `【CyberStrikeAI 机器人命令】
-· 帮助 — 显示本帮助
-· 列表 / 对话列表 — 列出所有对话标题与 ID
-· 切换 <对话ID> / 继续 <对话ID> — 指定对话继续
-· 新对话 — 开启新对话
-· 清空 — 清空当前上下文（等同于新对话）
-· 当前 — 显示当前对话 ID 与标题
-· 停止 — 中断当前正在执行的任务
-· 角色 / 角色列表 — 列出所有可用角色
-· 角色 <角色名> / 切换角色 <角色名> — 切换当前角色
-· 删除 <对话ID> — 删除指定对话
-· 版本 — 显示当前版本号
-除以上命令外，直接输入内容将发送给 AI 进行渗透测试/安全分析。`
+	return `【CyberStrikeAI 机器人命令 / Bot Commands】
+· 帮助 / help — 显示本帮助 / Show this help
+· 列表 / 对话列表 / list — 列出所有对话标题与 ID / List conversations
+· 切换 <ID> / 继续 <ID> / switch <ID> — 指定对话继续 / Switch to conversation
+· 新对话 / new — 开启新对话 / Start new conversation
+· 清空 / clear — 清空当前上下文 / Clear context (same as new)
+· 当前 / current — 显示当前对话 ID 与标题 / Show current conversation
+· 停止 / stop — 中断当前任务 / Stop running task
+· 角色 / 角色列表 / roles — 列出所有可用角色 / List roles
+· 角色 <名> / 切换角色 <名> / role <name> — 切换当前角色 / Switch role
+· 删除 <ID> / delete <ID> — 删除指定对话 / Delete conversation
+· 版本 / version — 显示当前版本号 / Show version
+除以上命令外，直接输入内容将发送给 AI 进行渗透测试/安全分析。
+Otherwise, send any text for AI penetration testing / security analysis.`
 }
 
 func (h *RobotHandler) cmdList() string {

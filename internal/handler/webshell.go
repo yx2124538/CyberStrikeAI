@@ -217,14 +217,16 @@ type ExecResponse struct {
 
 // FileOpRequest 文件操作请求
 type FileOpRequest struct {
-	URL      string `json:"url" binding:"required"`
-	Password string `json:"password"`
-	Type     string `json:"type"`
-	Method   string `json:"method"`    // GET 或 POST，空则默认 POST
-	CmdParam string `json:"cmd_param"` // 命令参数名，如 cmd/xxx，空则默认 cmd
-	Action   string `json:"action" binding:"required"` // list, read, delete, write
-	Path     string `json:"path"`
-	Content  string `json:"content"` // write 时使用
+	URL        string `json:"url" binding:"required"`
+	Password   string `json:"password"`
+	Type       string `json:"type"`
+	Method     string `json:"method"`     // GET 或 POST，空则默认 POST
+	CmdParam   string `json:"cmd_param"` // 命令参数名，如 cmd/xxx，空则默认 cmd
+	Action     string `json:"action" binding:"required"` // list, read, delete, write, mkdir, rename, upload, upload_chunk
+	Path       string `json:"path"`
+	TargetPath string `json:"target_path"` // rename 时目标路径
+	Content    string `json:"content"`     // write/upload 时使用
+	ChunkIndex int    `json:"chunk_index"` // upload_chunk 时，0 表示首块
 }
 
 // FileOpResponse 文件操作响应
@@ -371,6 +373,52 @@ func (h *WebShellHandler) FileOp(c *gin.Context) {
 	case "write":
 		path := h.escapePath(strings.TrimSpace(req.Path))
 		command = "echo " + h.escapeForEcho(req.Content) + " > " + path
+	case "mkdir":
+		path := strings.TrimSpace(req.Path)
+		if path == "" {
+			c.JSON(http.StatusBadRequest, FileOpResponse{OK: false, Error: "path is required for mkdir"})
+			return
+		}
+		if shellType == "asp" || shellType == "aspx" {
+			command = "md " + h.escapePath(path)
+		} else {
+			command = "mkdir -p " + h.escapePath(path)
+		}
+	case "rename":
+		oldPath := strings.TrimSpace(req.Path)
+		newPath := strings.TrimSpace(req.TargetPath)
+		if oldPath == "" || newPath == "" {
+			c.JSON(http.StatusBadRequest, FileOpResponse{OK: false, Error: "path and target_path are required for rename"})
+			return
+		}
+		if shellType == "asp" || shellType == "aspx" {
+			command = "move /y " + h.escapePath(oldPath) + " " + h.escapePath(newPath)
+		} else {
+			command = "mv " + h.escapePath(oldPath) + " " + h.escapePath(newPath)
+		}
+	case "upload":
+		path := strings.TrimSpace(req.Path)
+		if path == "" {
+			c.JSON(http.StatusBadRequest, FileOpResponse{OK: false, Error: "path is required for upload"})
+			return
+		}
+		if len(req.Content) > 512*1024 {
+			c.JSON(http.StatusBadRequest, FileOpResponse{OK: false, Error: "upload content too large (max 512KB base64)"})
+			return
+		}
+		// base64 仅含 A-Za-z0-9+/=，用单引号包裹安全
+		command = "echo " + "'" + req.Content + "'" + " | base64 -d > " + h.escapePath(path)
+	case "upload_chunk":
+		path := strings.TrimSpace(req.Path)
+		if path == "" {
+			c.JSON(http.StatusBadRequest, FileOpResponse{OK: false, Error: "path is required for upload_chunk"})
+			return
+		}
+		redir := ">>"
+		if req.ChunkIndex == 0 {
+			redir = ">"
+		}
+		command = "echo " + "'" + req.Content + "'" + " | base64 -d " + redir + " " + h.escapePath(path)
 	default:
 		c.JSON(http.StatusBadRequest, FileOpResponse{OK: false, Error: "unsupported action: " + req.Action})
 		return

@@ -8745,6 +8745,31 @@ header {
     display: flex;
 }
 
+.webshell-terminal-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+.webshell-quick-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-right: 4px;
+}
+.webshell-terminal-toolbar .btn-ghost {
+    font-size: 12px;
+}
+
+#webshell-pane-terminal {
+    flex-direction: column;
+}
+
 /* 仅外框圆角，内部不做额外装饰，避免挡住文字 */
 .webshell-terminal-container {
     flex: 1;
@@ -8849,6 +8874,37 @@ header {
     border-radius: 8px;
     font-weight: 500;
     transition: all 0.2s ease;
+}
+
+.webshell-file-breadcrumb {
+    width: 100%;
+    flex: 1 1 100%;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+.webshell-file-breadcrumb a.webshell-breadcrumb-item {
+    color: var(--accent-color);
+    text-decoration: none;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+.webshell-file-breadcrumb a.webshell-breadcrumb-item:hover {
+    background: rgba(0, 102, 255, 0.08);
+}
+.webshell-file-filter {
+    min-width: 140px !important;
+    max-width: 200px !important;
+}
+.webshell-col-check {
+    width: 36px;
+    text-align: center;
+    vertical-align: middle;
+}
+.webshell-col-size {
+    width: 80px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
 }
 
 .webshell-file-list {

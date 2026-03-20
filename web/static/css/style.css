@@ -3445,8 +3445,43 @@ header {
     padding: 0;
 }
 
-.terminal-container .xterm-viewport {
+/* 所有终端容器统一直线滚动条样式 */
+.terminal-container .xterm-viewport,
+.settings-modal .xterm-viewport,
+.webshell-terminal-container .xterm-viewport,
+.modal .xterm-viewport {
     border-radius: 0;
+    /* 终端滚动条统一样式 - 始终隐藏 */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar,
+.settings-modal .xterm-viewport::-webkit-scrollbar,
+.webshell-terminal-container .xterm-viewport::-webkit-scrollbar,
+.modal .xterm-viewport::-webkit-scrollbar {
+    width: 0px; /* Chrome/Safari/Webkit */
+    display: none;
+}
+
+/* 可选：隐藏额外重叠的滚动条 */
+.xterm .xterm-viewport,
+.xterm-viewport {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* 确保悬停时不显示 */
+.xterm .xterm-viewport::-webkit-scrollbar,
+.xterm-viewport::-webkit-scrollbar {
+    width: 0px;
+    display: none;
+}
+
+/* 隐藏任何可能的默认浏览器滚动条 */
+*::-webkit-scrollbar {
+    -webkit-appearance: none;
+    appearance: none;
 }
 
 .terminal-error {
@@ -8847,29 +8882,6 @@ header {
     overflow: hidden;
 }
 
-/* WebShell 终端滚动条：深色主题、细窄、圆角，弱化存在感 */
-.webshell-terminal-container .xterm-viewport {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(110, 118, 129, 0.5) transparent;
-}
-.webshell-terminal-container .xterm-viewport::-webkit-scrollbar {
-    width: 6px;
-}
-.webshell-terminal-container .xterm-viewport::-webkit-scrollbar-track {
-    background: transparent;
-    margin: 4px 0;
-    border-radius: 3px;
-}
-.webshell-terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
-    background: rgba(110, 118, 129, 0.4);
-    border-radius: 3px;
-}
-.webshell-terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
-    background: rgba(110, 118, 129, 0.65);
-}
-.webshell-terminal-container .xterm-viewport::-webkit-scrollbar-thumb:active {
-    background: rgba(139, 148, 158, 0.7);
-}
 
 .webshell-file-toolbar {
     display: flex;

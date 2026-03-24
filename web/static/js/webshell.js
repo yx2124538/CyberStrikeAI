@@ -110,6 +110,22 @@ function wsT(key) {
         'webshell.dbRunning': '数据库命令执行中，请稍候',
         'webshell.dbCliHint': '如果提示命令不存在，请先在目标主机安装对应客户端（mysql/psql/sqlite3/sqlcmd）',
         'webshell.dbExecFailed': '数据库执行失败',
+        'webshell.dbSchema': '数据库结构',
+        'webshell.dbLoadSchema': '加载结构',
+        'webshell.dbNoSchema': '暂无数据库结构，请先加载',
+        'webshell.dbSelectTableHint': '点击表名可生成查询 SQL',
+        'webshell.dbResultTable': '结果表格',
+        'webshell.dbClearSql': '清空 SQL',
+        'webshell.dbTemplateSql': '示例 SQL',
+        'webshell.dbRows': '行',
+        'webshell.dbColumns': '列',
+        'webshell.dbSchemaFailed': '加载数据库结构失败',
+        'webshell.dbAddProfile': '新增连接',
+        'webshell.dbRenameProfile': '重命名',
+        'webshell.dbDeleteProfile': '删除连接',
+        'webshell.dbDeleteProfileConfirm': '确定删除该数据库连接配置吗？',
+        'webshell.dbProfileNamePrompt': '请输入连接名称',
+        'webshell.dbProfiles': '数据库连接',
         'webshell.aiSystemReadyMessage': '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。',
         'webshell.aiPlaceholder': '例如：列出当前目录下的文件',
         'webshell.aiSend': '发送',
@@ -541,40 +557,81 @@ function getWebshellTreeState(conn) {
     };
 }
 
-function getWebshellDbConfig(conn) {
-    var key = 'webshell_db_cfg_' + safeConnIdForStorage(conn);
-    if (!key) return {
-        type: 'mysql', host: '127.0.0.1', port: '3306', username: 'root', password: '', database: '', sqlitePath: '/tmp/test.db', sql: 'SELECT 1;'
-    };
-    if (webshellDbConfigByConn[key]) return webshellDbConfigByConn[key];
-    var def = {
+function newWebshellDbProfile(name) {
+    var now = Date.now().toString(36);
+    var rand = Math.random().toString(36).slice(2, 8);
+    return {
+        id: 'dbp_' + now + rand,
+        name: name || 'DB-1',
         type: 'mysql',
         host: '127.0.0.1',
         port: '3306',
         username: 'root',
         password: '',
         database: '',
+        selectedDatabase: '',
         sqlitePath: '/tmp/test.db',
-        sql: 'SELECT 1;'
+        sql: 'SELECT 1;',
+        output: '',
+        outputIsError: false,
+        schema: {}
     };
+}
+
+function getWebshellDbStateStorageKey(conn) {
+    return 'webshell_db_state_' + safeConnIdForStorage(conn);
+}
+
+function normalizeWebshellDbState(rawState) {
+    var state = rawState && typeof rawState === 'object' ? rawState : {};
+    var profiles = Array.isArray(state.profiles) ? state.profiles.slice() : [];
+    if (!profiles.length) profiles = [newWebshellDbProfile('DB-1')];
+    profiles = profiles.map(function (p, idx) {
+        var base = newWebshellDbProfile('DB-' + (idx + 1));
+        return Object.assign(base, p || {});
+    });
+    var activeProfileId = state.activeProfileId || '';
+    if (!profiles.some(function (p) { return p.id === activeProfileId; })) {
+        activeProfileId = profiles[0].id;
+    }
+    return { profiles: profiles, activeProfileId: activeProfileId };
+}
+
+function getWebshellDbState(conn) {
+    var key = getWebshellDbStateStorageKey(conn);
+    if (!key) return normalizeWebshellDbState(null);
+    if (webshellDbConfigByConn[key]) return webshellDbConfigByConn[key];
+    var state = normalizeWebshellDbState(null);
     try {
         var raw = localStorage.getItem(key);
-        if (raw) {
-            var parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                def = Object.assign(def, parsed);
-            }
-        }
+        if (raw) state = normalizeWebshellDbState(JSON.parse(raw));
     } catch (e) {}
-    webshellDbConfigByConn[key] = def;
-    return def;
+    webshellDbConfigByConn[key] = state;
+    return state;
+}
+
+function saveWebshellDbState(conn, state) {
+    var key = getWebshellDbStateStorageKey(conn);
+    if (!key || !state) return;
+    var normalized = normalizeWebshellDbState(state);
+    webshellDbConfigByConn[key] = normalized;
+    try { localStorage.setItem(key, JSON.stringify(normalized)); } catch (e) {}
+}
+
+function getWebshellDbConfig(conn) {
+    var state = getWebshellDbState(conn);
+    var active = state.profiles.find(function (p) { return p.id === state.activeProfileId; });
+    return active || state.profiles[0];
 }
 
 function saveWebshellDbConfig(conn, cfg) {
-    var key = 'webshell_db_cfg_' + safeConnIdForStorage(conn);
-    if (!key || !cfg) return;
-    webshellDbConfigByConn[key] = cfg;
-    try { localStorage.setItem(key, JSON.stringify(cfg)); } catch (e) {}
+    if (!cfg) return;
+    var state = getWebshellDbState(conn);
+    var idx = state.profiles.findIndex(function (p) { return p.id === state.activeProfileId; });
+    if (idx < 0) idx = 0;
+    state.profiles[idx] = Object.assign({}, state.profiles[idx], cfg);
+    state.activeProfileId = state.profiles[idx].id;
+    saveWebshellDbState(conn, state);
 }
 
 function webshellDbGetFieldValue(id) {
@@ -590,6 +647,7 @@ function webshellDbCollectConfig(conn) {
         username: webshellDbGetFieldValue('webshell-db-user') || '',
         password: (document.getElementById('webshell-db-pass') || {}).value || '',
         database: webshellDbGetFieldValue('webshell-db-name') || '',
+        selectedDatabase: getWebshellDbConfig(conn).selectedDatabase || '',
         sqlitePath: webshellDbGetFieldValue('webshell-db-sqlite-path') || '/tmp/test.db',
         sql: (document.getElementById('webshell-db-sql') || {}).value || ''
     };
@@ -619,9 +677,78 @@ function webshellDbSetOutput(text, isError) {
     outputEl.classList.toggle('error', !!isError);
 }
 
-function buildWebshellDbCommand(cfg, isTestOnly) {
+function webshellDbRenderTable(rawOutput) {
+    var wrap = document.getElementById('webshell-db-result-table');
+    if (!wrap) return false;
+    var raw = String(rawOutput || '').trim();
+    if (!raw) {
+        wrap.innerHTML = '';
+        return false;
+    }
+    var lines = raw.split(/\r?\n/).filter(function (line) {
+        var t = String(line || '').trim();
+        if (!t) return false;
+        if (/^\(\d+\s+rows?\)$/i.test(t)) return false;
+        if (/^-{3,}$/.test(t)) return false;
+        return true;
+    });
+    if (lines.length < 2) {
+        wrap.innerHTML = '';
+        return false;
+    }
+    var delimiter = lines[0].indexOf('\t') >= 0 ? '\t' : (lines[0].indexOf('|') >= 0 ? '|' : '');
+    if (!delimiter) {
+        wrap.innerHTML = '';
+        return false;
+    }
+    var header = lines[0].split(delimiter).map(function (s) { return String(s || '').trim(); });
+    if (!header.length || (header.length === 1 && !header[0])) {
+        wrap.innerHTML = '';
+        return false;
+    }
+    var rows = [];
+    for (var i = 1; i < lines.length; i++) {
+        var line = lines[i];
+        if (/^[-+\s|]+$/.test(line)) continue;
+        var cols = line.split(delimiter).map(function (s) { return String(s || '').trim(); });
+        if (cols.length !== header.length) continue;
+        rows.push(cols);
+    }
+    if (!rows.length) {
+        wrap.innerHTML = '';
+        return false;
+    }
+    var maxRows = Math.min(rows.length, 200);
+    var html = '<table class="webshell-db-table"><thead><tr>';
+    header.forEach(function (h) { html += '<th>' + escapeHtml(h || '-') + '</th>'; });
+    html += '</tr></thead><tbody>';
+    for (var r = 0; r < maxRows; r++) {
+        html += '<tr>';
+        rows[r].forEach(function (c) { html += '<td>' + escapeHtml(c || '') + '</td>'; });
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    if (rows.length > maxRows) {
+        html += '<div class="webshell-db-table-meta">仅展示前 ' + maxRows + ' 行，共 ' + rows.length + ' 行</div>';
+    } else {
+        html += '<div class="webshell-db-table-meta">共 ' + rows.length + ' 行，' + header.length + ' 列</div>';
+    }
+    wrap.innerHTML = html;
+    return true;
+}
+
+function webshellDbQuoteIdentifier(type, name) {
+    var v = String(name || '');
+    if (!v) return '';
+    if (type === 'mysql') return '`' + v.replace(/`/g, '``') + '`';
+    if (type === 'mssql') return '[' + v.replace(/]/g, ']]') + ']';
+    return '"' + v.replace(/"/g, '""') + '"';
+}
+
+function buildWebshellDbCommand(cfg, isTestOnly, options) {
+    options = options || {};
     var type = cfg.type || 'mysql';
-    var sql = String(isTestOnly ? 'SELECT 1;' : (cfg.sql || '')).trim();
+    var sql = String(isTestOnly ? 'SELECT 1;' : (options.sql || cfg.sql || '')).trim();
     if (!sql) return { error: wsT('webshell.dbSqlRequired') || '请输入 SQL' };
 
     var sqlB64 = btoa(unescape(encodeURIComponent(sql)));
@@ -636,31 +763,49 @@ function buildWebshellDbCommand(cfg, isTestOnly) {
         var port = escapeSingleQuotedShellArg(cfg.port || '3306');
         var user = escapeSingleQuotedShellArg(cfg.username || 'root');
         var pass = escapeSingleQuotedShellArg(cfg.password || '');
-        var db = cfg.database ? (' -D ' + escapeSingleQuotedShellArg(cfg.database)) : '';
+        var dbName = cfg.selectedDatabase || cfg.database || '';
+        var db = dbName ? (' -D ' + escapeSingleQuotedShellArg(dbName)) : '';
         command = decodeToFile + '; MYSQL_PWD=' + pass + ' mysql -h ' + host + ' -P ' + port + ' -u ' + user + db + ' --batch --raw < ' + tmpFile + cleanup;
     } else if (type === 'pgsql') {
         var pHost = escapeSingleQuotedShellArg(cfg.host || '127.0.0.1');
         var pPort = escapeSingleQuotedShellArg(cfg.port || '5432');
         var pUser = escapeSingleQuotedShellArg(cfg.username || 'postgres');
         var pPass = escapeSingleQuotedShellArg(cfg.password || '');
-        var pDb = escapeSingleQuotedShellArg(cfg.database || 'postgres');
-        command = decodeToFile + '; PGPASSWORD=' + pPass + ' psql -h ' + pHost + ' -p ' + pPort + ' -U ' + pUser + ' -d ' + pDb + ' -f ' + tmpFile + cleanup;
+        var pDb = escapeSingleQuotedShellArg(cfg.selectedDatabase || cfg.database || 'postgres');
+        command = decodeToFile + '; PGPASSWORD=' + pPass + ' psql -h ' + pHost + ' -p ' + pPort + ' -U ' + pUser + ' -d ' + pDb + ' -v ON_ERROR_STOP=1 -A -F "|" -P footer=off -f ' + tmpFile + cleanup;
     } else if (type === 'sqlite') {
         var sqlitePath = escapeSingleQuotedShellArg(cfg.sqlitePath || '/tmp/test.db');
-        command = decodeToFile + '; sqlite3 -header -column ' + sqlitePath + ' < ' + tmpFile + cleanup;
+        command = decodeToFile + '; sqlite3 -header -separator "|" ' + sqlitePath + ' < ' + tmpFile + cleanup;
     } else if (type === 'mssql') {
         var sHost = cfg.host || '127.0.0.1';
         var sPort = cfg.port || '1433';
         var sUser = escapeSingleQuotedShellArg(cfg.username || 'sa');
         var sPass = escapeSingleQuotedShellArg(cfg.password || '');
-        var sDb = escapeSingleQuotedShellArg(cfg.database || 'master');
+        var sDb = escapeSingleQuotedShellArg(cfg.selectedDatabase || cfg.database || 'master');
         var server = escapeSingleQuotedShellArg(sHost + ',' + sPort);
-        command = decodeToFile + '; sqlcmd -S ' + server + ' -U ' + sUser + ' -P ' + sPass + ' -d ' + sDb + ' -i ' + tmpFile + cleanup;
+        command = decodeToFile + '; sqlcmd -S ' + server + ' -U ' + sUser + ' -P ' + sPass + ' -W -s "|" -d ' + sDb + ' -i ' + tmpFile + cleanup;
     } else {
         return { error: (wsT('webshell.dbExecFailed') || '数据库执行失败') + ': unsupported type ' + type };
     }
 
     return { command: command };
+}
+
+function buildWebshellDbSchemaCommand(cfg) {
+    var type = cfg.type || 'mysql';
+    var schemaSQL = '';
+    if (type === 'mysql') {
+        schemaSQL = "SELECT SCHEMA_NAME AS db_name, '' AS table_name FROM INFORMATION_SCHEMA.SCHEMATA UNION ALL SELECT TABLE_SCHEMA AS db_name, TABLE_NAME AS table_name FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' ORDER BY db_name, table_name;";
+    } else if (type === 'pgsql') {
+        schemaSQL = "SELECT table_schema AS db_name, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema, table_name;";
+    } else if (type === 'sqlite') {
+        schemaSQL = "SELECT 'main' AS db_name, name AS table_name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name;";
+    } else if (type === 'mssql') {
+        schemaSQL = "SELECT TABLE_SCHEMA AS db_name, TABLE_NAME AS table_name FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE='BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME;";
+    } else {
+        return { error: (wsT('webshell.dbExecFailed') || '数据库执行失败') + ': unsupported type ' + type };
+    }
+    return buildWebshellDbCommand(cfg, false, { sql: schemaSQL });
 }
 
 function parseWebshellDbExecOutput(rawOutput) {
@@ -671,6 +816,34 @@ function parseWebshellDbExecOutput(rawOutput) {
         return '';
     }).trim();
     return { rc: rc, output: cleaned };
+}
+
+function parseWebshellDbSchema(rawOutput) {
+    var text = String(rawOutput || '').trim();
+    if (!text) return {};
+    var lines = text.split(/\r?\n/).filter(function (line) {
+        return line && line.trim() && !/^\(\d+\s+rows?\)$/i.test(line.trim()) && !/^[-+\s|]+$/.test(line.trim());
+    });
+    if (lines.length < 2) return {};
+    var delimiter = lines[0].indexOf('\t') >= 0 ? '\t' : (lines[0].indexOf('|') >= 0 ? '|' : '');
+    if (!delimiter) return {};
+    var headers = lines[0].split(delimiter).map(function (s) { return String(s || '').trim().toLowerCase(); });
+    var dbIdx = headers.indexOf('db_name');
+    var tableIdx = headers.indexOf('table_name');
+    if (dbIdx < 0 || tableIdx < 0) return {};
+    var schema = {};
+    for (var i = 1; i < lines.length; i++) {
+        var cols = lines[i].split(delimiter).map(function (s) { return String(s || '').trim(); });
+        if (cols.length !== headers.length) continue;
+        var db = cols[dbIdx] || 'default';
+        var table = cols[tableIdx] || '';
+        if (!schema[db]) schema[db] = [];
+        if (table) schema[db].push(table);
+    }
+    Object.keys(schema).forEach(function (dbName) {
+        schema[dbName].sort(function (a, b) { return a.localeCompare(b); });
+    });
+    return schema;
 }
 
 function simplifyWebshellAiError(rawMessage) {
@@ -929,8 +1102,8 @@ function selectWebshell(id) {
         '<div class="webshell-tabs">' +
         '<button type="button" class="webshell-tab active" data-tab="terminal">' + wsT('webshell.tabTerminal') + '</button>' +
         '<button type="button" class="webshell-tab" data-tab="file">' + wsT('webshell.tabFileManager') + '</button>' +
-        '<button type="button" class="webshell-tab" data-tab="ai">' + (wsT('webshell.tabAiAssistant') || 'AI 助手') + '</button>' +
         '<button type="button" class="webshell-tab" data-tab="db">' + (wsT('webshell.tabDbManager') || '数据库管理') + '</button>' +
+        '<button type="button" class="webshell-tab" data-tab="ai">' + (wsT('webshell.tabAiAssistant') || 'AI 助手') + '</button>' +
         '</div>' +
         '<div id="webshell-pane-terminal" class="webshell-pane active">' +
         '<div class="webshell-terminal-toolbar">' +
@@ -996,6 +1169,14 @@ function selectWebshell(id) {
         '</div>' +
         '</div>' +
         '<div id="webshell-pane-db" class="webshell-pane webshell-pane-db">' +
+        '<div class="webshell-db-profiles-bar"><div id="webshell-db-profiles" class="webshell-db-profiles"></div><div class="webshell-db-profile-actions"><button type="button" class="btn-ghost btn-sm" id="webshell-db-add-profile-btn">+ ' + (wsT('webshell.dbAddProfile') || '新增连接') + '</button></div></div>' +
+        '<div class="webshell-db-layout">' +
+        '<aside class="webshell-db-sidebar">' +
+        '<div class="webshell-db-sidebar-head"><span>' + (wsT('webshell.dbSchema') || '数据库结构') + '</span><button type="button" class="btn-ghost btn-sm" id="webshell-db-load-schema-btn">' + (wsT('webshell.dbLoadSchema') || '加载结构') + '</button></div>' +
+        '<div id="webshell-db-schema-tree" class="webshell-db-schema-tree"><div class="webshell-empty">' + (wsT('webshell.dbNoSchema') || '暂无数据库结构，请先加载') + '</div></div>' +
+        '<div class="webshell-db-sidebar-hint">' + (wsT('webshell.dbSelectTableHint') || '点击表名可生成查询 SQL') + '</div>' +
+        '</aside>' +
+        '<section class="webshell-db-main">' +
         '<div class="webshell-db-toolbar">' +
         '<label><span>' + (wsT('webshell.dbType') || '数据库类型') + '</span><select id="webshell-db-type" class="form-control"><option value="mysql">MySQL</option><option value="pgsql">PostgreSQL</option><option value="sqlite">SQLite</option><option value="mssql">SQL Server</option></select></label>' +
         '<label class="webshell-db-common-field"><span>' + (wsT('webshell.dbHost') || '主机') + '</span><input id="webshell-db-host" class="form-control" type="text" value="127.0.0.1" /></label>' +
@@ -1005,12 +1186,15 @@ function selectWebshell(id) {
         '<label class="webshell-db-common-field"><span>' + (wsT('webshell.dbName') || '数据库名') + '</span><input id="webshell-db-name" class="form-control" type="text" /></label>' +
         '<label id="webshell-db-sqlite-row"><span>' + (wsT('webshell.dbSqlitePath') || 'SQLite 文件路径') + '</span><input id="webshell-db-sqlite-path" class="form-control" type="text" value="/tmp/test.db" /></label>' +
         '</div>' +
+        '<div class="webshell-db-sql-tools"><button type="button" class="btn-ghost btn-sm" id="webshell-db-template-btn">' + (wsT('webshell.dbTemplateSql') || '示例 SQL') + '</button><button type="button" class="btn-ghost btn-sm" id="webshell-db-clear-btn">' + (wsT('webshell.dbClearSql') || '清空 SQL') + '</button></div>' +
         '<textarea id="webshell-db-sql" class="webshell-db-sql form-control" rows="8" placeholder="' + (wsT('webshell.dbSqlPlaceholder') || '输入 SQL，例如：SELECT version();') + '"></textarea>' +
         '<div class="webshell-db-actions">' +
         '<button type="button" class="btn-ghost" id="webshell-db-test-btn">' + (wsT('webshell.dbTest') || '测试连接') + '</button>' +
         '<button type="button" class="btn-primary" id="webshell-db-run-btn">' + (wsT('webshell.dbRunSql') || '执行 SQL') + '</button>' +
         '</div>' +
-        '<div class="webshell-db-output-wrap"><div class="webshell-db-output-title">' + (wsT('webshell.dbOutput') || '执行输出') + '</div><pre id="webshell-db-output" class="webshell-db-output"></pre><div class="webshell-db-hint">' + (wsT('webshell.dbCliHint') || '如果提示命令不存在，请先在目标主机安装对应客户端（mysql/psql/sqlite3/sqlcmd）') + '</div></div>' +
+        '<div class="webshell-db-output-wrap"><div class="webshell-db-output-title">' + (wsT('webshell.dbOutput') || '执行输出') + '</div><div id="webshell-db-result-table" class="webshell-db-result-table"></div><pre id="webshell-db-output" class="webshell-db-output"></pre><div class="webshell-db-hint">' + (wsT('webshell.dbCliHint') || '如果提示命令不存在，请先在目标主机安装对应客户端（mysql/psql/sqlite3/sqlcmd）') + '</div></div>' +
+        '</section>' +
+        '</div>' +
         '</div>';
 
     // Tab 切换
@@ -1106,27 +1290,194 @@ function selectWebshell(id) {
         });
     }
 
-    // 数据库管理：通过 WebShell 执行数据库客户端命令
+    // 数据库管理：支持多连接工作区（不同数据库类型并存）+ 刷新持久化
     var dbTypeEl = document.getElementById('webshell-db-type');
     var dbRunBtn = document.getElementById('webshell-db-run-btn');
     var dbTestBtn = document.getElementById('webshell-db-test-btn');
     var dbSqlEl = document.getElementById('webshell-db-sql');
-    var dbCfg = getWebshellDbConfig(conn);
-    if (dbTypeEl) dbTypeEl.value = dbCfg.type || 'mysql';
+    var dbLoadSchemaBtn = document.getElementById('webshell-db-load-schema-btn');
+    var dbTemplateBtn = document.getElementById('webshell-db-template-btn');
+    var dbClearBtn = document.getElementById('webshell-db-clear-btn');
+    var dbSchemaTreeEl = document.getElementById('webshell-db-schema-tree');
+    var dbProfilesEl = document.getElementById('webshell-db-profiles');
+    var dbAddProfileBtn = document.getElementById('webshell-db-add-profile-btn');
     var dbHostEl = document.getElementById('webshell-db-host');
     var dbPortEl = document.getElementById('webshell-db-port');
     var dbUserEl = document.getElementById('webshell-db-user');
     var dbPassEl = document.getElementById('webshell-db-pass');
     var dbNameEl = document.getElementById('webshell-db-name');
     var dbSqliteEl = document.getElementById('webshell-db-sqlite-path');
-    if (dbHostEl) dbHostEl.value = dbCfg.host || '127.0.0.1';
-    if (dbPortEl) dbPortEl.value = dbCfg.port || '';
-    if (dbUserEl) dbUserEl.value = dbCfg.username || '';
-    if (dbPassEl) dbPassEl.value = dbCfg.password || '';
-    if (dbNameEl) dbNameEl.value = dbCfg.database || '';
-    if (dbSqliteEl) dbSqliteEl.value = dbCfg.sqlitePath || '/tmp/test.db';
-    if (dbSqlEl) dbSqlEl.value = dbCfg.sql || 'SELECT 1;';
-    webshellDbUpdateFieldVisibility();
+
+    function setDbActionButtonsDisabled(disabled) {
+        if (dbRunBtn) dbRunBtn.disabled = disabled;
+        if (dbTestBtn) dbTestBtn.disabled = disabled;
+        if (dbLoadSchemaBtn) dbLoadSchemaBtn.disabled = disabled;
+        if (dbAddProfileBtn) dbAddProfileBtn.disabled = disabled;
+    }
+
+    function applyActiveDbProfileToForm() {
+        var dbCfg = getWebshellDbConfig(conn);
+        if (!dbCfg) return;
+        if (dbTypeEl) dbTypeEl.value = dbCfg.type || 'mysql';
+        if (dbHostEl) dbHostEl.value = dbCfg.host || '127.0.0.1';
+        if (dbPortEl) dbPortEl.value = dbCfg.port || '';
+        if (dbUserEl) dbUserEl.value = dbCfg.username || '';
+        if (dbPassEl) dbPassEl.value = dbCfg.password || '';
+        if (dbNameEl) dbNameEl.value = dbCfg.database || dbCfg.selectedDatabase || '';
+        if (dbSqliteEl) dbSqliteEl.value = dbCfg.sqlitePath || '/tmp/test.db';
+        if (dbSqlEl) dbSqlEl.value = dbCfg.sql || 'SELECT 1;';
+        webshellDbUpdateFieldVisibility();
+        webshellDbSetOutput(dbCfg.output || '', !!dbCfg.outputIsError);
+        webshellDbRenderTable(dbCfg.output || '');
+    }
+
+    function renderDbProfileTabs() {
+        if (!dbProfilesEl) return;
+        var state = getWebshellDbState(conn);
+        var html = '';
+        state.profiles.forEach(function (p) {
+            var active = p.id === state.activeProfileId;
+            html += '<div class="webshell-db-profile-tab' + (active ? ' active' : '') + '" data-id="' + escapeHtml(p.id) + '">' +
+                '<button type="button" class="webshell-db-profile-main" data-action="switch" data-id="' + escapeHtml(p.id) + '">' + escapeHtml(p.name || 'DB') + '</button>' +
+                '<button type="button" class="webshell-db-profile-menu" data-action="rename" data-id="' + escapeHtml(p.id) + '" title="' + escapeHtml(wsT('webshell.dbRenameProfile') || '重命名') + '">✎</button>' +
+                '<button type="button" class="webshell-db-profile-menu" data-action="delete" data-id="' + escapeHtml(p.id) + '" title="' + escapeHtml(wsT('webshell.dbDeleteProfile') || '删除连接') + '">×</button>' +
+                '</div>';
+        });
+        dbProfilesEl.innerHTML = html;
+        dbProfilesEl.querySelectorAll('[data-action]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var action = btn.getAttribute('data-action');
+                var id = btn.getAttribute('data-id') || '';
+                if (!id) return;
+                var state = getWebshellDbState(conn);
+                var idx = state.profiles.findIndex(function (p) { return p.id === id; });
+                if (idx < 0) return;
+                if (action === 'switch') {
+                    state.activeProfileId = id;
+                    saveWebshellDbState(conn, state);
+                    applyActiveDbProfileToForm();
+                    renderDbProfileTabs();
+                    renderDbSchemaTree();
+                    return;
+                }
+                if (action === 'rename') {
+                    var curr = state.profiles[idx].name || '';
+                    var next = prompt(wsT('webshell.dbProfileNamePrompt') || '请输入连接名称', curr);
+                    if (next == null) return;
+                    next = String(next || '').trim();
+                    if (!next) return;
+                    state.profiles[idx].name = next.slice(0, 30);
+                    saveWebshellDbState(conn, state);
+                    renderDbProfileTabs();
+                    return;
+                }
+                if (action === 'delete') {
+                    if (state.profiles.length <= 1) return;
+                    if (!confirm(wsT('webshell.dbDeleteProfileConfirm') || '确定删除该数据库连接配置吗？')) return;
+                    state.profiles.splice(idx, 1);
+                    if (!state.profiles.some(function (p) { return p.id === state.activeProfileId; })) {
+                        state.activeProfileId = state.profiles[0].id;
+                    }
+                    saveWebshellDbState(conn, state);
+                    applyActiveDbProfileToForm();
+                    renderDbProfileTabs();
+                    renderDbSchemaTree();
+                }
+            });
+        });
+    }
+
+    function renderDbSchemaTree() {
+        if (!dbSchemaTreeEl) return;
+        var cfg = getWebshellDbConfig(conn);
+        var schema = (cfg && cfg.schema && typeof cfg.schema === 'object') ? cfg.schema : {};
+        var dbs = Object.keys(schema).sort(function (a, b) { return a.localeCompare(b); });
+        if (!dbs.length) {
+            dbSchemaTreeEl.innerHTML = '<div class="webshell-empty">' + escapeHtml(wsT('webshell.dbNoSchema') || '暂无数据库结构，请先加载') + '</div>';
+            return;
+        }
+        var selectedDb = (cfg.selectedDatabase || '').trim();
+        var html = '';
+        dbs.forEach(function (dbName) {
+            var tables = schema[dbName] || [];
+            var isActive = selectedDb && selectedDb === dbName;
+            html += '<details class="webshell-db-group"' + (isActive ? ' open' : '') + '>';
+            html += '<summary class="webshell-db-group-title" data-db="' + escapeHtml(dbName) + '"><span class="webshell-db-icon">🗄</span><span>' + escapeHtml(dbName) + '</span><span class="webshell-db-count">' + tables.length + '</span></summary>';
+            html += '<div class="webshell-db-group-items">';
+            tables.forEach(function (tableName) {
+                html += '<button type="button" class="webshell-db-table-item" data-db="' + escapeHtml(dbName) + '" data-table="' + escapeHtml(tableName) + '"><span class="webshell-db-icon">📄</span><span>' + escapeHtml(tableName) + '</span></button>';
+            });
+            html += '</div></details>';
+        });
+        dbSchemaTreeEl.innerHTML = html;
+
+        dbSchemaTreeEl.querySelectorAll('.webshell-db-group-title').forEach(function (el) {
+            el.addEventListener('click', function () {
+                var cfg = webshellDbCollectConfig(conn);
+                cfg.selectedDatabase = el.getAttribute('data-db') || '';
+                saveWebshellDbConfig(conn, cfg);
+                if (dbNameEl && cfg.type !== 'sqlite') dbNameEl.value = cfg.selectedDatabase;
+            });
+        });
+        dbSchemaTreeEl.querySelectorAll('.webshell-db-table-item').forEach(function (el) {
+            el.addEventListener('click', function () {
+                var table = el.getAttribute('data-table') || '';
+                var dbName = el.getAttribute('data-db') || '';
+                if (!table) return;
+                var cfg = webshellDbCollectConfig(conn);
+                cfg.selectedDatabase = dbName;
+                if (cfg.type !== 'sqlite') cfg.database = dbName;
+                saveWebshellDbConfig(conn, cfg);
+                if (dbNameEl && cfg.type !== 'sqlite') dbNameEl.value = dbName;
+                var tableRef = cfg.type === 'sqlite'
+                    ? webshellDbQuoteIdentifier(cfg.type, table)
+                    : webshellDbQuoteIdentifier(cfg.type, dbName) + '.' + webshellDbQuoteIdentifier(cfg.type, table);
+                if (dbSqlEl) {
+                    dbSqlEl.value = 'SELECT * FROM ' + tableRef + ' ORDER BY 1 DESC LIMIT 20;';
+                    webshellDbCollectConfig(conn);
+                }
+            });
+        });
+    }
+
+    function loadDbSchema() {
+        if (!conn || !conn.id) {
+            webshellDbSetOutput(wsT('webshell.dbNoConn') || '请先选择 WebShell 连接', true);
+            return;
+        }
+        if (webshellRunning) {
+            webshellDbSetOutput(wsT('webshell.dbRunning') || '数据库命令执行中，请稍候', true);
+            return;
+        }
+        var cfg = webshellDbCollectConfig(conn);
+        var built = buildWebshellDbSchemaCommand(cfg);
+        if (!built.command) {
+            webshellDbSetOutput(built.error || (wsT('webshell.dbSchemaFailed') || '加载数据库结构失败'), true);
+            return;
+        }
+        webshellDbSetOutput(wsT('webshell.running') || '执行中…', false);
+        webshellRunning = true;
+        setDbActionButtonsDisabled(true);
+        execWebshellCommand(conn, built.command).then(function (out) {
+            var parsed = parseWebshellDbExecOutput(out);
+            var success = parsed.rc === 0 || (parsed.rc == null && parsed.output && !/error|failed|denied|unknown|not found|access/i.test(parsed.output));
+            if (!success) {
+                webshellDbSetOutput((wsT('webshell.dbSchemaFailed') || '加载数据库结构失败') + ':\n' + (parsed.output || ''), true);
+                return;
+            }
+            cfg.schema = parseWebshellDbSchema(parsed.output);
+            cfg.output = '结构加载完成';
+            cfg.outputIsError = false;
+            saveWebshellDbConfig(conn, cfg);
+            renderDbSchemaTree();
+            webshellDbSetOutput('结构加载完成', false);
+        }).catch(function (err) {
+            webshellDbSetOutput((wsT('webshell.dbSchemaFailed') || '加载数据库结构失败') + ': ' + (err && err.message ? err.message : String(err)), true);
+        }).finally(function () {
+            webshellRunning = false;
+            setDbActionButtonsDisabled(false);
+        });
+    }
 
     function runDbQuery(isTestOnly) {
         if (!conn || !conn.id) {
@@ -1145,37 +1496,64 @@ function selectWebshell(id) {
         }
         webshellDbSetOutput(wsT('webshell.running') || '执行中…', false);
         webshellRunning = true;
-        if (dbRunBtn) dbRunBtn.disabled = true;
-        if (dbTestBtn) dbTestBtn.disabled = true;
+        setDbActionButtonsDisabled(true);
         execWebshellCommand(conn, built.command).then(function (out) {
             var parsed = parseWebshellDbExecOutput(out);
             var code = parsed.rc;
             var content = parsed.output || '';
             var success = (code === 0) || (code == null && content && !/error|failed|denied|unknown|not found|access/i.test(content));
             if (isTestOnly) {
-                var maybeOne = /\b1\b/.test(content);
-                if (success && (maybeOne || content === '' || /^ok$/i.test(content))) {
-                    webshellDbSetOutput('连接测试通过');
+                if (success) {
+                    cfg.output = '连接测试通过';
+                    cfg.outputIsError = false;
+                    saveWebshellDbConfig(conn, cfg);
+                    webshellDbSetOutput(cfg.output, false);
                 } else {
-                    webshellDbSetOutput('连接测试失败' + (content ? (':\n' + content) : ''), true);
+                    cfg.output = '连接测试失败' + (content ? (':\n' + content) : '');
+                    cfg.outputIsError = true;
+                    saveWebshellDbConfig(conn, cfg);
+                    webshellDbSetOutput(cfg.output, true);
                 }
                 return;
             }
             if (!success) {
-                webshellDbSetOutput((wsT('webshell.dbExecFailed') || '数据库执行失败') + (content ? (':\n' + content) : ''), true);
+                cfg.output = (wsT('webshell.dbExecFailed') || '数据库执行失败') + (content ? (':\n' + content) : '');
+                cfg.outputIsError = true;
+                saveWebshellDbConfig(conn, cfg);
+                webshellDbSetOutput(cfg.output, true);
                 return;
             }
-            webshellDbSetOutput(content || '执行完成（无输出）');
+            var hasTable = webshellDbRenderTable(content);
+            if (hasTable) {
+                cfg.output = 'SQL 执行成功';
+                cfg.outputIsError = false;
+                saveWebshellDbConfig(conn, cfg);
+                webshellDbSetOutput(cfg.output, false);
+            } else {
+                cfg.output = content || '执行完成（无输出）';
+                cfg.outputIsError = false;
+                saveWebshellDbConfig(conn, cfg);
+                webshellDbSetOutput(cfg.output, false);
+            }
         }).catch(function (err) {
-            webshellDbSetOutput((wsT('webshell.dbExecFailed') || '数据库执行失败') + ': ' + (err && err.message ? err.message : String(err)), true);
+            cfg.output = (wsT('webshell.dbExecFailed') || '数据库执行失败') + ': ' + (err && err.message ? err.message : String(err));
+            cfg.outputIsError = true;
+            saveWebshellDbConfig(conn, cfg);
+            webshellDbSetOutput(cfg.output, true);
         }).finally(function () {
             webshellRunning = false;
-            if (dbRunBtn) dbRunBtn.disabled = false;
-            if (dbTestBtn) dbTestBtn.disabled = false;
+            setDbActionButtonsDisabled(false);
         });
     }
 
-    if (dbTypeEl) dbTypeEl.addEventListener('change', function () { webshellDbUpdateFieldVisibility(); webshellDbCollectConfig(conn); });
+    if (dbTypeEl) dbTypeEl.addEventListener('change', function () {
+        webshellDbUpdateFieldVisibility();
+        var cfg = webshellDbCollectConfig(conn);
+        cfg.selectedDatabase = '';
+        cfg.schema = {};
+        saveWebshellDbConfig(conn, cfg);
+        renderDbSchemaTree();
+    });
     ['webshell-db-host', 'webshell-db-port', 'webshell-db-user', 'webshell-db-pass', 'webshell-db-name', 'webshell-db-sqlite-path'].forEach(function (id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('change', function () { webshellDbCollectConfig(conn); });
@@ -1183,6 +1561,34 @@ function selectWebshell(id) {
     if (dbSqlEl) dbSqlEl.addEventListener('change', function () { webshellDbCollectConfig(conn); });
     if (dbRunBtn) dbRunBtn.addEventListener('click', function () { runDbQuery(false); });
     if (dbTestBtn) dbTestBtn.addEventListener('click', function () { runDbQuery(true); });
+    if (dbLoadSchemaBtn) dbLoadSchemaBtn.addEventListener('click', function () { loadDbSchema(); });
+    if (dbTemplateBtn) dbTemplateBtn.addEventListener('click', function () {
+        if (!dbSqlEl) return;
+        var cfg = webshellDbCollectConfig(conn);
+        if (cfg.type === 'mysql') dbSqlEl.value = 'SHOW DATABASES;\nSELECT DATABASE() AS current_db;';
+        else if (cfg.type === 'pgsql') dbSqlEl.value = 'SELECT current_database();\nSELECT schema_name FROM information_schema.schemata ORDER BY schema_name;';
+        else if (cfg.type === 'sqlite') dbSqlEl.value = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;";
+        else dbSqlEl.value = "SELECT name FROM sys.databases ORDER BY name;\nSELECT DB_NAME() AS current_db;";
+        webshellDbCollectConfig(conn);
+    });
+    if (dbClearBtn) dbClearBtn.addEventListener('click', function () {
+        if (dbSqlEl) dbSqlEl.value = '';
+        webshellDbCollectConfig(conn);
+    });
+    if (dbAddProfileBtn) dbAddProfileBtn.addEventListener('click', function () {
+        var state = getWebshellDbState(conn);
+        var name = 'DB-' + (state.profiles.length + 1);
+        var p = newWebshellDbProfile(name);
+        state.profiles.push(p);
+        state.activeProfileId = p.id;
+        saveWebshellDbState(conn, state);
+        applyActiveDbProfileToForm();
+        renderDbProfileTabs();
+        renderDbSchemaTree();
+    });
+    renderDbProfileTabs();
+    applyActiveDbProfileToForm();
+    renderDbSchemaTree();
 
     initWebshellTerminal(conn);
 }
@@ -2570,6 +2976,14 @@ function refreshWebshellUIOnLanguageChange() {
             if (dbNameLabel && dbNameLabel.querySelector('span')) dbNameLabel.querySelector('span').textContent = wsT('webshell.dbName') || '数据库名';
             var dbSqliteLabel = document.querySelector('#webshell-db-sqlite-path') ? document.querySelector('#webshell-db-sqlite-path').closest('label') : null;
             if (dbSqliteLabel && dbSqliteLabel.querySelector('span')) dbSqliteLabel.querySelector('span').textContent = wsT('webshell.dbSqlitePath') || 'SQLite 文件路径';
+            var dbSchemaTitle = document.querySelector('.webshell-db-sidebar-head span');
+            if (dbSchemaTitle) dbSchemaTitle.textContent = wsT('webshell.dbSchema') || '数据库结构';
+            var dbLoadSchemaBtn = document.getElementById('webshell-db-load-schema-btn');
+            if (dbLoadSchemaBtn) dbLoadSchemaBtn.textContent = wsT('webshell.dbLoadSchema') || '加载结构';
+            var dbTemplateBtn = document.getElementById('webshell-db-template-btn');
+            if (dbTemplateBtn) dbTemplateBtn.textContent = wsT('webshell.dbTemplateSql') || '示例 SQL';
+            var dbClearBtn = document.getElementById('webshell-db-clear-btn');
+            if (dbClearBtn) dbClearBtn.textContent = wsT('webshell.dbClearSql') || '清空 SQL';
             var dbRunBtn = document.getElementById('webshell-db-run-btn');
             if (dbRunBtn) dbRunBtn.textContent = wsT('webshell.dbRunSql') || '执行 SQL';
             var dbTestBtn = document.getElementById('webshell-db-test-btn');
@@ -2580,6 +2994,20 @@ function refreshWebshellUIOnLanguageChange() {
             if (dbTitle) dbTitle.textContent = wsT('webshell.dbOutput') || '执行输出';
             var dbHint = document.querySelector('.webshell-db-hint');
             if (dbHint) dbHint.textContent = wsT('webshell.dbCliHint') || '如果提示命令不存在，请先在目标主机安装对应客户端（mysql/psql/sqlite3/sqlcmd）';
+            var dbTreeHint = document.querySelector('.webshell-db-sidebar-hint');
+            if (dbTreeHint) dbTreeHint.textContent = wsT('webshell.dbSelectTableHint') || '点击表名可生成查询 SQL';
+            var dbAddProfileBtn = document.getElementById('webshell-db-add-profile-btn');
+            if (dbAddProfileBtn) dbAddProfileBtn.textContent = '+ ' + (wsT('webshell.dbAddProfile') || '新增连接');
+            document.querySelectorAll('.webshell-db-profile-menu[data-action="rename"]').forEach(function (el) {
+                el.title = wsT('webshell.dbRenameProfile') || '重命名';
+            });
+            document.querySelectorAll('.webshell-db-profile-menu[data-action="delete"]').forEach(function (el) {
+                el.title = wsT('webshell.dbDeleteProfile') || '删除连接';
+            });
+            var dbTree = document.getElementById('webshell-db-schema-tree');
+            if (dbTree && !dbTree.querySelector('.webshell-db-group')) {
+                dbTree.innerHTML = '<div class="webshell-empty">' + escapeHtml(wsT('webshell.dbNoSchema') || '暂无数据库结构，请先加载') + '</div>';
+            }
 
             // 如果当前 AI 对话区只有系统就绪提示（没有用户消息），用当前语言重置这条提示
             var aiMessages = document.getElementById('webshell-ai-messages');

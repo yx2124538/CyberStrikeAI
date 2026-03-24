@@ -9944,6 +9944,165 @@ header {
     background: linear-gradient(180deg, rgba(2, 6, 23, 0.015) 0%, rgba(2, 6, 23, 0.03) 100%);
     border-radius: 10px;
 }
+.webshell-db-profiles-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 10px;
+    padding: 6px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.92) 100%);
+}
+.webshell-db-profiles {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    min-width: 0;
+    flex: 1;
+}
+.webshell-db-profile-actions {
+    flex-shrink: 0;
+}
+.webshell-db-profile-tab {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+.webshell-db-profile-tab.active {
+    border-color: rgba(0, 102, 255, 0.36);
+    box-shadow: 0 0 0 1px rgba(0, 102, 255, 0.12);
+}
+.webshell-db-profile-main,
+.webshell-db-profile-menu {
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.webshell-db-profile-main {
+    padding: 5px 10px;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.8rem;
+}
+.webshell-db-profile-tab.active .webshell-db-profile-main {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.webshell-db-profile-menu {
+    padding: 5px 7px;
+    border-left: 1px solid rgba(15, 23, 42, 0.1);
+    font-size: 0.78rem;
+}
+.webshell-db-profile-menu:hover {
+    background: rgba(15, 23, 42, 0.06);
+}
+.webshell-db-layout {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 12px;
+}
+.webshell-db-sidebar {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.96) 100%);
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.webshell-db-sidebar-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+.webshell-db-sidebar-head span {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.webshell-db-schema-tree {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 10px;
+}
+.webshell-db-sidebar-hint {
+    border-top: 1px solid var(--border-color);
+    padding: 8px 12px;
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    background: rgba(2, 6, 23, 0.02);
+}
+.webshell-db-group {
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 8px;
+    background: #fff;
+    margin-bottom: 8px;
+}
+.webshell-db-group-title {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    list-style: none;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    color: var(--text-primary);
+}
+.webshell-db-group-title::-webkit-details-marker {
+    display: none;
+}
+.webshell-db-count {
+    margin-left: auto;
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+}
+.webshell-db-group-items {
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    max-height: 260px;
+    overflow: auto;
+}
+.webshell-db-table-item {
+    border: 0;
+    background: transparent;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+.webshell-db-table-item:hover {
+    background: rgba(0, 102, 255, 0.06);
+    color: var(--text-primary);
+}
+.webshell-db-icon {
+    opacity: 0.85;
+}
+.webshell-db-main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 .webshell-db-toolbar {
     display: grid;
     grid-template-columns: repeat(4, minmax(160px, 1fr));
@@ -9994,6 +10153,10 @@ header {
 }
 #webshell-db-sqlite-row {
     grid-column: 1 / -1;
+}
+.webshell-db-sql-tools {
+    display: flex;
+    gap: 8px;
 }
 .webshell-db-sql {
     width: 100%;
@@ -10056,6 +10219,41 @@ header {
 .webshell-db-output.error {
     color: var(--error-color);
 }
+.webshell-db-result-table {
+    border-bottom: 1px solid var(--border-color);
+    overflow: auto;
+    max-height: 46%;
+}
+.webshell-db-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.webshell-db-table th,
+.webshell-db-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+    border-right: 1px solid rgba(148, 163, 184, 0.24);
+    white-space: nowrap;
+}
+.webshell-db-table th:last-child,
+.webshell-db-table td:last-child {
+    border-right: none;
+}
+.webshell-db-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: rgba(248, 250, 252, 0.98);
+    font-weight: 700;
+}
+.webshell-db-table-meta {
+    padding: 6px 8px;
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+    background: rgba(248, 250, 252, 0.9);
+}
 .webshell-db-hint {
     border-top: 1px solid var(--border-color);
     font-size: 0.76rem;
@@ -10064,11 +10262,20 @@ header {
     background: rgba(2, 6, 23, 0.02);
 }
 @media (max-width: 1280px) {
+    .webshell-db-layout {
+        grid-template-columns: 240px minmax(0, 1fr);
+    }
     .webshell-db-toolbar {
         grid-template-columns: repeat(3, minmax(140px, 1fr));
     }
 }
 @media (max-width: 980px) {
+    .webshell-db-layout {
+        grid-template-columns: 1fr;
+    }
+    .webshell-db-sidebar {
+        min-height: 200px;
+    }
     .webshell-db-toolbar {
         grid-template-columns: repeat(2, minmax(140px, 1fr));
     }

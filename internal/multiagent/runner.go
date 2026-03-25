@@ -297,6 +297,7 @@ func RunDeepAgent(
 		return agent == "" || agent == orchestratorName
 	}
 
+	// 仅保留主代理最后一次 assistant 输出，避免把多轮中间回复拼接到最终答案。
 	var lastAssistant string
 	var reasoningStreamSeq int64
 	var einoSubReplyStreamSeq int64
@@ -335,6 +336,7 @@ func RunDeepAgent(
 			var toolStreamFragments []schema.ToolCall
 			var subAssistantBuf strings.Builder
 			var subReplyStreamID string
+			var mainAssistantBuf strings.Builder
 			for {
 				chunk, rerr := mv.MessageStream.Recv()
 				if rerr != nil {
@@ -376,7 +378,7 @@ func RunDeepAgent(
 							"conversationId":  conversationID,
 							"mcpExecutionIds": snapshotMCPIDs(),
 						})
-						lastAssistant += chunk.Content
+						mainAssistantBuf.WriteString(chunk.Content)
 					} else if !streamsMainAssistant(ev.AgentName) {
 						if progress != nil {
 							if subReplyStreamID == "" {
@@ -399,6 +401,11 @@ func RunDeepAgent(
 				// 收集流式 tool_calls 全部分片；arguments 在最后一帧常为 ""，需按 index/id 合并后才能展示 subagent_type/description。
 				if len(chunk.ToolCalls) > 0 {
 					toolStreamFragments = append(toolStreamFragments, chunk.ToolCalls...)
+				}
+			}
+			if streamsMainAssistant(ev.AgentName) {
+				if s := strings.TrimSpace(mainAssistantBuf.String()); s != "" {
+					lastAssistant = s
 				}
 			}
 			if subAssistantBuf.Len() > 0 && progress != nil {
@@ -455,7 +462,7 @@ func RunDeepAgent(
 							"mcpExecutionIds": snapshotMCPIDs(),
 						})
 					}
-					lastAssistant += body
+					lastAssistant = body
 				} else if progress != nil {
 					progress("eino_agent_reply", body, map[string]interface{}{
 						"conversationId": conversationID,

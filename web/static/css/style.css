@@ -1803,6 +1803,16 @@ header {
     color: var(--text-primary);
 }
 
+.chat-file-chip--uploading {
+    opacity: 0.92;
+    border-style: dashed;
+}
+
+.chat-file-chip--error {
+    border-color: rgba(220, 38, 38, 0.45);
+    background: rgba(220, 38, 38, 0.06);
+}
+
 .chat-file-input-hidden {
     position: absolute;
     width: 0;
@@ -14620,5 +14630,49 @@ button.chat-files-dropdown-item:hover:not(:disabled) {
 .chat-files-toast.chat-files-toast-visible {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+}
+
+/* 对话附件读取 / 文件管理上传 进度条 */
+/* [hidden] 默认会被本类的 display:flex 覆盖，须显式隐藏否则空闲时仍露出灰条 */
+.chat-upload-progress-row[hidden] {
+    display: none !important;
+}
+
+.chat-upload-progress-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0 4px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.04));
+    border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+}
+
+.chat-upload-progress-row--files {
+    margin-top: 12px;
+    margin-bottom: 0;
+}
+
+.chat-upload-progress-track {
+    height: 6px;
+    border-radius: 4px;
+    background: var(--border-color, rgba(0, 0, 0, 0.1));
+    overflow: hidden;
+}
+
+.chat-upload-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    background: var(--accent-primary, #2563eb);
+    transition: width 0.12s ease-out;
+}
+
+.chat-upload-progress-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #666);
+    line-height: 1.35;
+    word-break: break-all;
 }
 

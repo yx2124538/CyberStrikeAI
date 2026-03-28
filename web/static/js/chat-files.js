@@ -12,6 +12,8 @@ const CHAT_FILES_BROWSE_PATH_KEY = 'csai_chat_files_browse_path';
 let chatFilesBrowsePath = [];
 /** 非空时，下一次上传文件落到此相对路径（chat_uploads 下目录），如 2026-03-21/uuid/sub */
 let chatFilesPendingUploadDir = '';
+/** 文件管理页面向服务器上传进行中，避免重复选择并禁用顶栏按钮 */
+let chatFilesXHRUploadBusy = false;
 
 /** 仅前端记录的「空目录」键 parentPath（'' 表示 chat_uploads 根）-> 子目录名列表，与树合并以便 mkdir 后可见 */
 const CHAT_FILES_SYNTHETIC_DIRS_KEY = 'csai_chat_files_synthetic_dirs';
@@ -301,7 +303,7 @@ function chatFilesNameFilter(files) {
 
 /** 仅前端按文件名筛选，不重新请求 */
 function chatFilesFilterNameOnInput() {
-    if (!chatFilesCache.length) return;
+    if (!chatFilesCache.length && chatFilesGetGroupByMode() !== 'folder') return;
     renderChatFilesTable();
 }
 
@@ -554,8 +556,10 @@ function renderChatFilesTable() {
     if (!wrap) return;
 
     chatFilesDisplayed = chatFilesNameFilter(chatFilesCache);
+    const groupMode = chatFilesGetGroupByMode();
     const emptyMsg = (typeof window.t === 'function') ? window.t('chatFilesPage.empty') : '暂无文件';
-    if (!chatFilesDisplayed.length) {
+    // 「按文件夹」模式下即使尚无文件，也要显示 chat_uploads 路径栏与「新建文件夹」，否则无法先建目录
+    if (!chatFilesDisplayed.length && groupMode !== 'folder') {
         wrap.classList.remove('chat-files-table-wrap--grouped');
         wrap.classList.remove('chat-files-table-wrap--tree');
         wrap.innerHTML = '<div class="empty-state" data-i18n="chatFilesPage.empty">' + escapeHtml(emptyMsg) + '</div>';
@@ -665,7 +669,6 @@ function renderChatFilesTable() {
         <th>${escapeHtml(thActions)}</th>
     </tr></thead>`;
 
-    const groupMode = chatFilesGetGroupByMode();
     let innerHtml;
 
     if (groupMode === 'folder') {
@@ -1197,7 +1200,36 @@ async function submitChatFilesMkdir() {
     }
 }
 
+function chatFilesSetUploadProgressUI(visible, percent, fileName) {
+    const wrap = document.getElementById('chat-files-upload-progress');
+    const fill = document.getElementById('chat-files-upload-progress-fill');
+    const label = document.getElementById('chat-files-upload-progress-label');
+    if (!wrap || !fill || !label) return;
+    if (!visible) {
+        wrap.hidden = true;
+        fill.style.width = '0%';
+        label.textContent = '';
+        return;
+    }
+    wrap.hidden = false;
+    const p = Math.min(100, Math.max(0, Math.round(percent)));
+    fill.style.width = p + '%';
+    const name = fileName || '';
+    label.textContent = (typeof window.t === 'function')
+        ? window.t('chatFilesPage.uploadingFile', { name: name, percent: p })
+        : ('正在上传 ' + name + ' · ' + p + '%');
+}
+
+function chatFilesSetUploadBusy(busy) {
+    chatFilesXHRUploadBusy = !!busy;
+    ['chat-files-header-upload-btn', 'chat-files-refresh-btn'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = chatFilesXHRUploadBusy;
+    });
+}
+
 function chatFilesOpenUploadPicker() {
+    if (chatFilesXHRUploadBusy) return;
     if (chatFilesGetGroupByMode() === 'folder') {
         chatFilesPendingUploadDir = chatFilesBrowsePath.join('/');
     } else {
@@ -1209,6 +1241,7 @@ function chatFilesOpenUploadPicker() {
 
 function chatFilesUploadToFolderClick(ev, btn) {
     if (ev) ev.stopPropagation();
+    if (chatFilesXHRUploadBusy) return;
     const raw = btn.getAttribute('data-upload-dir');
     if (!raw) return;
     try {
@@ -1237,12 +1270,22 @@ async function onChatFilesUploadPick(ev) {
             form.append('conversationId', conv.value.trim());
         }
     }
+    chatFilesSetUploadBusy(true);
+    chatFilesSetUploadProgressUI(true, 0, file.name);
     try {
-        const res = await apiFetch('/api/chat-uploads', { method: 'POST', body: form });
+        const doXhr = typeof apiUploadWithProgress === 'function';
+        const res = doXhr
+            ? await apiUploadWithProgress('/api/chat-uploads', form, {
+                onProgress: function (p) {
+                    chatFilesSetUploadProgressUI(true, p.percent, file.name);
+                }
+            })
+            : await apiFetch('/api/chat-uploads', { method: 'POST', body: form });
         if (!res.ok) {
             throw new Error(await res.text());
         }
         const data = await res.json().catch(() => ({}));
+        chatFilesSetUploadProgressUI(true, 100, file.name);
         loadChatFilesPage();
         if (data && data.ok) {
             const msg = (typeof window.t === 'function')
@@ -1253,6 +1296,8 @@ async function onChatFilesUploadPick(ev) {
     } catch (e) {
         alert((e && e.message) ? e.message : String(e));
     } finally {
+        chatFilesSetUploadBusy(false);
+        chatFilesSetUploadProgressUI(false);
         input.value = '';
     }
 }

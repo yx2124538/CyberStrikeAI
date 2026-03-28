@@ -25,8 +25,12 @@ const DRAFT_SAVE_DELAY = 500; // 500ms防抖延迟
 // 对话文件上传相关（后端会拼接路径与内容发给大模型，前端不再重复发文件列表）
 const MAX_CHAT_FILES = 10;
 const CHAT_FILE_DEFAULT_PROMPT = '请根据上传的文件内容进行分析。';
-/** @type {{ fileName: string, content: string, mimeType: string }[]} */
+/**
+ * 对话附件：选文件后异步 POST /api/chat-uploads，发送时只传 serverPath（绝对路径），请求体不再内联大文件内容。
+ * @type {{ id: number, fileName: string, mimeType: string, serverPath: string|null, uploading: boolean, uploadPercent: number, uploadPromise: Promise<void>|null, uploadError: string|null }[]}
+ */
 let chatAttachments = [];
+let chatAttachmentSeq = 0;
 
 // 多代理（Eino）：需后端 multi_agent.enabled，与单代理 /agent-loop 并存
 const AGENT_MODE_STORAGE_KEY = 'cyberstrike-chat-agent-mode';
@@ -236,6 +240,30 @@ async function sendMessage() {
     if (!message && !hasAttachments) {
         return;
     }
+
+    if (hasAttachments) {
+        const needWait = chatAttachments.some((a) => a.uploading);
+        if (needWait) {
+            const waitLabel = (typeof window.t === 'function')
+                ? window.t('chat.waitingAttachmentsUpload')
+                : '正在等待附件上传完成…';
+            chatAttachmentProgressSet(true, 0, waitLabel);
+        }
+        try {
+            await Promise.all(chatAttachments.map((a) => (a.uploadPromise ? a.uploadPromise : Promise.resolve())));
+        } finally {
+            refreshChatAttachmentUploadProgress();
+        }
+        const bad = chatAttachments.filter((a) => !a.serverPath);
+        if (bad.length) {
+            const hint = (typeof window.t === 'function')
+                ? window.t('chat.attachmentsUploadIncomplete')
+                : '部分附件未上传成功，请移除失败项或重新选择文件后再发送。';
+            alert(hint);
+            return;
+        }
+    }
+
     // 有附件且用户未输入时，发一句简短默认提示即可（后端会拼接路径和文件内容给大模型）
     if (hasAttachments && !message) {
         message = CHAT_FILE_DEFAULT_PROMPT;
@@ -274,10 +302,10 @@ async function sendMessage() {
         role: typeof getCurrentRole === 'function' ? getCurrentRole() : ''
     };
     if (hasAttachments) {
-        body.attachments = chatAttachments.map(a => ({
+        body.attachments = chatAttachments.map((a) => ({
             fileName: a.fileName,
-            content: a.content,
-            mimeType: a.mimeType || ''
+            mimeType: a.mimeType || '',
+            serverPath: a.serverPath
         }));
     }
     // 发送后清空附件列表
@@ -386,11 +414,19 @@ function renderChatFileChips() {
     chatAttachments.forEach((a, i) => {
         const chip = document.createElement('div');
         chip.className = 'chat-file-chip';
+        if (a.uploading) chip.classList.add('chat-file-chip--uploading');
+        if (a.uploadError) chip.classList.add('chat-file-chip--error');
         chip.setAttribute('role', 'listitem');
         const name = document.createElement('span');
         name.className = 'chat-file-chip-name';
         name.title = a.fileName;
-        name.textContent = a.fileName;
+        let label = a.fileName;
+        if (a.uploading) {
+            label += ' · ' + ((typeof window.t === 'function') ? window.t('chat.attachmentUploading') : '上传中…');
+        } else if (a.uploadError) {
+            label += ' · ' + ((typeof window.t === 'function') ? window.t('chat.attachmentUploadFailed') : '失败');
+        }
+        name.textContent = label;
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'chat-file-chip-remove';
@@ -407,6 +443,7 @@ function renderChatFileChips() {
 function removeChatAttachment(index) {
     chatAttachments.splice(index, 1);
     renderChatFileChips();
+    refreshChatAttachmentUploadProgress();
 }
 
 // 有附件且输入框为空时，填入一句默认提示（可编辑）；后端会单独拼接路径与内容给大模型
@@ -419,46 +456,122 @@ function appendChatFilePrompt() {
     }
 }
 
-function readFileAsAttachment(file) {
-    return new Promise((resolve, reject) => {
-        const mimeType = file.type || '';
-        const isTextLike = /^text\//i.test(mimeType) || /^(application\/(json|xml|javascript)|image\/svg\+xml)/i.test(mimeType);
-        const reader = new FileReader();
-        reader.onload = () => {
-            let content = reader.result;
-            if (typeof content === 'string' && content.startsWith('data:')) {
-                content = content.replace(/^data:[^;]+;base64,/, '');
-            }
-            resolve({ fileName: file.name, content: content, mimeType: mimeType });
-        };
-        reader.onerror = () => reject(reader.error);
-        if (isTextLike) {
-            reader.readAsText(file, 'UTF-8');
-        } else {
-            reader.readAsDataURL(file);
-        }
-    });
+function chatAttachmentProgressSet(visible, percent, detailText) {
+    const wrap = document.getElementById('chat-attachment-progress');
+    const fill = document.getElementById('chat-attachment-progress-fill');
+    const label = document.getElementById('chat-attachment-progress-label');
+    if (!wrap || !fill || !label) return;
+    if (!visible) {
+        wrap.hidden = true;
+        fill.style.width = '0%';
+        label.textContent = '';
+        return;
+    }
+    wrap.hidden = false;
+    const p = Math.min(100, Math.max(0, Math.round(percent)));
+    fill.style.width = p + '%';
+    label.textContent = detailText || '';
 }
 
-function addFilesToChat(files) {
+function refreshChatAttachmentUploadProgress() {
+    if (!chatAttachments.length) {
+        chatAttachmentProgressSet(false);
+        return;
+    }
+    const uploading = chatAttachments.filter((a) => a.uploading);
+    if (!uploading.length) {
+        chatAttachmentProgressSet(false);
+        return;
+    }
+    let sum = 0;
+    chatAttachments.forEach((a) => {
+        sum += a.uploading ? (a.uploadPercent || 0) : 100;
+    });
+    const overall = Math.round(sum / chatAttachments.length);
+    const line = (typeof window.t === 'function')
+        ? window.t('chat.uploadingAttachmentsDetail', {
+            done: chatAttachments.length - uploading.length,
+            total: chatAttachments.length,
+            percent: overall
+        })
+        : ('上传附件 ' + (chatAttachments.length - uploading.length) + '/' + chatAttachments.length + ' · ' + overall + '%');
+    chatAttachmentProgressSet(true, overall, line);
+}
+
+async function uploadOneChatAttachment(entry, file) {
+    const form = new FormData();
+    form.append('file', file);
+    const conv = currentConversationId;
+    if (conv && String(conv).trim()) {
+        form.append('conversationId', String(conv).trim());
+    }
+    const entryId = entry.id;
+    try {
+        const res = typeof apiUploadWithProgress === 'function'
+            ? await apiUploadWithProgress('/api/chat-uploads', form, {
+                onProgress: function (p) {
+                    const cur = chatAttachments.find((x) => x.id === entryId);
+                    if (cur) {
+                        cur.uploadPercent = p.percent;
+                        refreshChatAttachmentUploadProgress();
+                    }
+                }
+            })
+            : await apiFetch('/api/chat-uploads', { method: 'POST', body: form });
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+        const data = await res.json().catch(() => ({}));
+        const abs = data.absolutePath ? String(data.absolutePath).trim() : '';
+        if (!abs) {
+            throw new Error('no absolutePath in response');
+        }
+        const cur = chatAttachments.find((x) => x.id === entryId);
+        if (cur) {
+            cur.serverPath = abs;
+            cur.uploading = false;
+            cur.uploadPercent = 100;
+            cur.uploadError = null;
+        }
+    } catch (e) {
+        const msg = (e && e.message) ? e.message : String(e);
+        const cur = chatAttachments.find((x) => x.id === entryId);
+        if (cur) {
+            cur.uploading = false;
+            cur.uploadError = msg;
+            cur.serverPath = null;
+        }
+        alert(((typeof window.t === 'function') ? window.t('chat.attachmentUploadAlert', { name: file.name }) : ('上传失败：' + file.name)) + '\n' + msg);
+    }
+    renderChatFileChips();
+    refreshChatAttachmentUploadProgress();
+}
+
+async function addFilesToChat(files) {
     if (!files || !files.length) return;
     const next = Array.from(files);
     if (chatAttachments.length + next.length > MAX_CHAT_FILES) {
         alert('最多同时上传 ' + MAX_CHAT_FILES + ' 个文件，当前已选 ' + chatAttachments.length + ' 个。');
         return;
     }
-    const addOne = (file) => {
-        return readFileAsAttachment(file).then((a) => {
-            chatAttachments.push(a);
-            renderChatFileChips();
-            appendChatFilePrompt();
-        }).catch(() => {
-            alert('读取文件失败：' + file.name);
-        });
-    };
-    let p = Promise.resolve();
-    next.forEach((file) => { p = p.then(() => addOne(file)); });
-    p.then(() => {});
+    next.forEach((file) => {
+        const id = ++chatAttachmentSeq;
+        const entry = {
+            id: id,
+            fileName: file.name,
+            mimeType: file.type || '',
+            serverPath: null,
+            uploading: true,
+            uploadPercent: 0,
+            uploadPromise: null,
+            uploadError: null
+        };
+        entry.uploadPromise = uploadOneChatAttachment(entry, file);
+        chatAttachments.push(entry);
+    });
+    renderChatFileChips();
+    refreshChatAttachmentUploadProgress();
+    appendChatFilePrompt();
 }
 
 function setupChatFileUpload() {
@@ -469,7 +582,7 @@ function setupChatFileUpload() {
     inputEl.addEventListener('change', function () {
         const files = this.files;
         if (files && files.length) {
-            addFilesToChat(files);
+            addFilesToChat(files).catch(function () { /* addFilesToChat 已提示 */ });
         }
         this.value = '';
     });
@@ -491,7 +604,7 @@ function setupChatFileUpload() {
         e.stopPropagation();
         this.classList.remove('drag-over');
         const files = e.dataTransfer && e.dataTransfer.files;
-        if (files && files.length) addFilesToChat(files);
+        if (files && files.length) addFilesToChat(files).catch(function () { /* addFilesToChat 已提示 */ });
     });
 }
 

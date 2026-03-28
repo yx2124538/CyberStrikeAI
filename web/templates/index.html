@@ -626,6 +626,10 @@
                                 </div>
                                 <div class="chat-input-with-files">
                                     <div id="chat-file-list" class="chat-file-list" aria-label="已选文件列表"></div>
+                                    <div id="chat-attachment-progress" class="chat-upload-progress-row" hidden role="status" aria-live="polite">
+                                        <div class="chat-upload-progress-track" aria-hidden="true"><div class="chat-upload-progress-fill" id="chat-attachment-progress-fill"></div></div>
+                                        <span class="chat-upload-progress-label" id="chat-attachment-progress-label"></span>
+                                    </div>
                                     <div class="chat-input-field">
                                         <textarea id="chat-input" data-i18n="chat.inputPlaceholder" data-i18n-attr="placeholder" data-i18n-skip-text="true" placeholder="输入测试目标或命令... (输入 @ 选择工具 | Shift+Enter 换行，Enter 发送)" rows="1"></textarea>
                                         <div id="mention-suggestions" class="mention-suggestions" role="listbox" aria-label="工具提及候选"></div>
@@ -637,7 +641,7 @@
                                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                     </svg>
                                 </button>
-                                <button class="send-btn" onclick="sendMessage()">
+                                <button type="button" class="send-btn" id="chat-send-btn" onclick="sendMessage()">
                                     <span data-i18n="chat.send">发送</span>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1074,9 +1078,9 @@
                     <div class="page-header">
                         <h2 data-i18n="chatFilesPage.title">文件管理</h2>
                         <div class="page-header-actions">
-                            <button type="button" class="btn-primary" onclick="chatFilesOpenUploadPicker()" data-i18n="chatFilesPage.upload">上传文件</button>
+                            <button type="button" class="btn-primary" id="chat-files-header-upload-btn" onclick="chatFilesOpenUploadPicker()" data-i18n="chatFilesPage.upload">上传文件</button>
                             <input type="file" id="chat-files-upload-input" style="display:none" onchange="onChatFilesUploadPick(event)" />
-                            <button class="btn-secondary" onclick="loadChatFilesPage()" data-i18n="common.refresh">刷新</button>
+                            <button type="button" class="btn-secondary" id="chat-files-refresh-btn" onclick="loadChatFilesPage()" data-i18n="common.refresh">刷新</button>
                         </div>
                     </div>
                     <div class="page-content">
@@ -1100,6 +1104,10 @@
                                 </select>
                             </label>
                             <button class="btn-secondary" type="button" onclick="loadChatFilesPage()" data-i18n="common.search">搜索</button>
+                        </div>
+                        <div id="chat-files-upload-progress" class="chat-upload-progress-row chat-upload-progress-row--files" hidden role="status" aria-live="polite">
+                            <div class="chat-upload-progress-track" aria-hidden="true"><div class="chat-upload-progress-fill" id="chat-files-upload-progress-fill"></div></div>
+                            <span class="chat-upload-progress-label" id="chat-files-upload-progress-label"></span>
                         </div>
                         <div id="chat-files-list-wrap" class="chat-files-table-wrap">
                             <div class="loading-spinner" data-i18n="common.loading">加载中…</div>

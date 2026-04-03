@@ -190,3 +190,44 @@ func (h *ConversationHandler) DeleteConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "删除成功"})
 }
 
+// DeleteTurnRequest 删除一轮对话（POST /api/conversations/:id/delete-turn）
+type DeleteTurnRequest struct {
+	MessageID string `json:"messageId"`
+}
+
+// DeleteConversationTurn 删除锚点消息所在轮次（从该轮 user 到下一轮 user 之前），并清空 last_react_*。
+func (h *ConversationHandler) DeleteConversationTurn(c *gin.Context) {
+	conversationID := c.Param("id")
+	if conversationID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "conversation id required"})
+		return
+	}
+
+	var req DeleteTurnRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.MessageID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "messageId required"})
+		return
+	}
+
+	if _, err := h.db.GetConversation(conversationID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "对话不存在"})
+		return
+	}
+
+	deletedIDs, err := h.db.DeleteConversationTurn(conversationID, req.MessageID)
+	if err != nil {
+		h.logger.Warn("删除对话轮次失败",
+			zap.String("conversationId", conversationID),
+			zap.String("messageId", req.MessageID),
+			zap.Error(err),
+		)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deletedMessageIds": deletedIDs,
+		"message":           "ok",
+	})
+}
+

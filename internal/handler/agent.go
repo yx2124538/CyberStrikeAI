@@ -1256,7 +1256,7 @@ func (h *AgentHandler) AgentLoopStream(c *gin.Context) {
 
 	// 保存用户消息：有附件时一并保存附件名与路径，刷新后显示、继续对话时大模型也能从历史中拿到路径
 	userContent := userMessageContentForStorage(req.Message, req.Attachments, savedPaths)
-	_, err = h.db.AddMessage(conversationID, "user", userContent, nil)
+	userMsgRow, err := h.db.AddMessage(conversationID, "user", userContent, nil)
 	if err != nil {
 		h.logger.Error("保存用户消息失败", zap.Error(err))
 	}
@@ -1273,6 +1273,14 @@ func (h *AgentHandler) AgentLoopStream(c *gin.Context) {
 	var assistantMessageID string
 	if assistantMsg != nil {
 		assistantMessageID = assistantMsg.ID
+	}
+
+	// 尽早下发消息 ID，便于前端在流式结束前挂上「删除本轮」等（无需等整段结束再刷新）
+	if userMsgRow != nil {
+		sendEvent("message_saved", "", map[string]interface{}{
+			"conversationId": conversationID,
+			"userMessageId":  userMsgRow.ID,
+		})
 	}
 
 	// 创建进度回调函数，复用统一逻辑

@@ -103,6 +103,13 @@ func (h *AgentHandler) MultiAgentLoopStream(c *gin.Context) {
 	conversationID := prep.ConversationID
 	assistantMessageID := prep.AssistantMessageID
 
+	if prep.UserMessageID != "" {
+		sendEvent("message_saved", "", map[string]interface{}{
+			"conversationId": conversationID,
+			"userMessageId":  prep.UserMessageID,
+		})
+	}
+
 	progressCallback := h.createProgressCallback(conversationID, assistantMessageID, sendEvent)
 
 	baseCtx, cancelWithCause := context.WithCancelCause(context.Background())

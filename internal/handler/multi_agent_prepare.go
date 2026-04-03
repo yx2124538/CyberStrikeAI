@@ -19,6 +19,7 @@ type multiAgentPrepared struct {
 	FinalMessage       string
 	RoleTools          []string
 	AssistantMessageID string
+	UserMessageID      string
 }
 
 func (h *AgentHandler) prepareMultiAgentSession(req *ChatRequest) (*multiAgentPrepared, error) {
@@ -109,9 +110,14 @@ func (h *AgentHandler) prepareMultiAgentSession(req *ChatRequest) (*multiAgentPr
 	finalMessage = appendAttachmentsToMessage(finalMessage, req.Attachments, savedPaths)
 
 	userContent := userMessageContentForStorage(req.Message, req.Attachments, savedPaths)
-	if _, err = h.db.AddMessage(conversationID, "user", userContent, nil); err != nil {
-		h.logger.Error("保存用户消息失败", zap.Error(err))
-		return nil, fmt.Errorf("保存用户消息失败: %w", err)
+	userMsgRow, uerr := h.db.AddMessage(conversationID, "user", userContent, nil)
+	if uerr != nil {
+		h.logger.Error("保存用户消息失败", zap.Error(uerr))
+		return nil, fmt.Errorf("保存用户消息失败: %w", uerr)
+	}
+	userMessageID := ""
+	if userMsgRow != nil {
+		userMessageID = userMsgRow.ID
 	}
 
 	assistantMsg, aerr := h.db.AddMessage(conversationID, "assistant", "处理中...", nil)
@@ -129,5 +135,6 @@ func (h *AgentHandler) prepareMultiAgentSession(req *ChatRequest) (*multiAgentPr
 		FinalMessage:       finalMessage,
 		RoleTools:          roleTools,
 		AssistantMessageID: assistantMessageID,
+		UserMessageID:      userMessageID,
 	}, nil
 }

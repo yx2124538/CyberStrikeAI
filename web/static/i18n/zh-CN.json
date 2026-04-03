@@ -1110,6 +1110,7 @@
     "folderPathCopied": "目录路径已复制，可粘贴到对话中",
     "folderEmpty": "此文件夹为空",
     "confirmDeleteFolder": "确定删除该文件夹及其中的全部文件？此操作不可恢复。",
+    "folderRemovedStale": "服务器上已无该目录，列表已刷新。",
     "deleteFolderTitle": "删除文件夹",
     "uploadToFolderTitle": "上传文件到此文件夹",
     "newFolderButton": "新建文件夹",

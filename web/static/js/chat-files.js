@@ -1,6 +1,8 @@
 // 对话附件（chat_uploads）文件管理
 
 let chatFilesCache = [];
+/** 后端 GET /api/chat-uploads 返回的目录相对路径（含空文件夹），与 files 合并成树 */
+let chatFilesFoldersCache = [];
 let chatFilesDisplayed = [];
 let chatFilesEditRelativePath = '';
 let chatFilesRenameRelativePath = '';
@@ -14,98 +16,6 @@ let chatFilesBrowsePath = [];
 let chatFilesPendingUploadDir = '';
 /** 文件管理页面向服务器上传进行中，避免重复选择并禁用顶栏按钮 */
 let chatFilesXHRUploadBusy = false;
-
-/** 仅前端记录的「空目录」键 parentPath（'' 表示 chat_uploads 根）-> 子目录名列表，与树合并以便 mkdir 后可见 */
-const CHAT_FILES_SYNTHETIC_DIRS_KEY = 'csai_chat_files_synthetic_dirs';
-let chatFilesSyntheticEmptyDirs = {};
-
-function chatFilesLoadSyntheticDirsFromStorage() {
-    try {
-        const raw = localStorage.getItem(CHAT_FILES_SYNTHETIC_DIRS_KEY);
-        if (!raw) return;
-        const o = JSON.parse(raw);
-        if (o && typeof o === 'object') {
-            chatFilesSyntheticEmptyDirs = o;
-        }
-    } catch (e) {
-        chatFilesSyntheticEmptyDirs = {};
-    }
-}
-
-function chatFilesRegisterSyntheticEmptyDir(parentSegments, name) {
-    const p = parentSegments.join('/');
-    if (!chatFilesSyntheticEmptyDirs[p]) {
-        chatFilesSyntheticEmptyDirs[p] = [];
-    }
-    const arr = chatFilesSyntheticEmptyDirs[p];
-    if (arr.indexOf(name) === -1) {
-        arr.push(name);
-    }
-    try {
-        localStorage.setItem(CHAT_FILES_SYNTHETIC_DIRS_KEY, JSON.stringify(chatFilesSyntheticEmptyDirs));
-    } catch (e) {
-        /* ignore */
-    }
-}
-
-function chatFilesRemoveSyntheticDirSubtree(relPathUnderRoot) {
-    const rel = String(relPathUnderRoot || '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
-    if (!rel) return;
-    const parts = rel.split('/').filter(function (x) {
-        return x.length > 0;
-    });
-    if (parts.length === 0) return;
-    const leaf = parts[parts.length - 1];
-    const parentKey = parts.slice(0, -1).join('/');
-    const arr = chatFilesSyntheticEmptyDirs[parentKey];
-    if (arr) {
-        const ix = arr.indexOf(leaf);
-        if (ix >= 0) arr.splice(ix, 1);
-        if (arr.length === 0) delete chatFilesSyntheticEmptyDirs[parentKey];
-    }
-    const prefix = rel + '/';
-    let k;
-    for (k in chatFilesSyntheticEmptyDirs) {
-        if (!Object.prototype.hasOwnProperty.call(chatFilesSyntheticEmptyDirs, k)) continue;
-        if (k === rel || k.indexOf(prefix) === 0) {
-            delete chatFilesSyntheticEmptyDirs[k];
-        }
-    }
-    try {
-        localStorage.setItem(CHAT_FILES_SYNTHETIC_DIRS_KEY, JSON.stringify(chatFilesSyntheticEmptyDirs));
-    } catch (e) {
-        /* ignore */
-    }
-}
-
-function chatFilesMergeSyntheticDirsIntoTree(root) {
-    function ensurePath(node, segments) {
-        let n = node;
-        let i;
-        for (i = 0; i < segments.length; i++) {
-            const s = segments[i];
-            if (!n.dirs[s]) n.dirs[s] = chatFilesTreeMakeNode();
-            n = n.dirs[s];
-        }
-        return n;
-    }
-    let k;
-    for (k in chatFilesSyntheticEmptyDirs) {
-        if (!Object.prototype.hasOwnProperty.call(chatFilesSyntheticEmptyDirs, k)) continue;
-        const names = chatFilesSyntheticEmptyDirs[k];
-        if (!Array.isArray(names)) continue;
-        const segs = k ? k.split('/').filter(function (x) {
-            return x.length > 0;
-        }) : [];
-        const node = ensurePath(root, segs);
-        let ni;
-        for (ni = 0; ni < names.length; ni++) {
-            const nm = names[ni];
-            if (!nm || typeof nm !== 'string') continue;
-            if (!node.dirs[nm]) node.dirs[nm] = chatFilesTreeMakeNode();
-        }
-    }
-}
 
 function chatFilesLoadBrowsePathFromStorage() {
     try {
@@ -157,7 +67,11 @@ function chatFilesNormalizeBrowsePathForTree(root) {
 
 function initChatFilesPage() {
     chatFilesLoadBrowsePathFromStorage();
-    chatFilesLoadSyntheticDirsFromStorage();
+    try {
+        localStorage.removeItem('csai_chat_files_synthetic_dirs');
+    } catch (e) {
+        /* ignore */
+    }
     ensureChatFilesDocClickClose();
     const sel = document.getElementById('chat-files-group-by');
     if (sel) {
@@ -280,6 +194,7 @@ async function loadChatFilesPage() {
         }
         const data = await res.json();
         chatFilesCache = Array.isArray(data.files) ? data.files : [];
+        chatFilesFoldersCache = Array.isArray(data.folders) ? data.folders : [];
         renderChatFilesTable();
     } catch (e) {
         console.error(e);
@@ -303,7 +218,7 @@ function chatFilesNameFilter(files) {
 
 /** 仅前端按文件名筛选，不重新请求 */
 function chatFilesFilterNameOnInput() {
-    if (!chatFilesCache.length && chatFilesGetGroupByMode() !== 'folder') return;
+    if (!chatFilesCache.length && !chatFilesFoldersCache.length && chatFilesGetGroupByMode() !== 'folder') return;
     renderChatFilesTable();
 }
 
@@ -463,9 +378,34 @@ function chatFilesBuildTree(files) {
     return root;
 }
 
+/** 将后端返回的目录相对路径（如 a/b/c）并入树，便于展示空文件夹 */
+function chatFilesTreeInsertFolderPath(root, relSlash) {
+    const rp = String(relSlash || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!rp) return;
+    const parts = rp.split('/').filter(function (p) {
+        return p.length > 0;
+    });
+    if (!parts.length) return;
+    let node = root;
+    let i;
+    for (i = 0; i < parts.length; i++) {
+        const seg = parts[i];
+        if (!node.dirs[seg]) node.dirs[seg] = chatFilesTreeMakeNode();
+        node = node.dirs[seg];
+    }
+}
+
+function chatFilesMergeFoldersIntoTree(root, folderPaths) {
+    if (!Array.isArray(folderPaths)) return;
+    let i;
+    for (i = 0; i < folderPaths.length; i++) {
+        chatFilesTreeInsertFolderPath(root, folderPaths[i]);
+    }
+}
+
 function chatFilesTreeRootMerged() {
     const root = chatFilesBuildTree(chatFilesDisplayed);
-    chatFilesMergeSyntheticDirsIntoTree(root);
+    chatFilesMergeFoldersIntoTree(root, chatFilesFoldersCache);
     return root;
 }
 
@@ -907,9 +847,30 @@ async function deleteChatFolderFromBrowse(folderName) {
             body: JSON.stringify({ path: rel })
         });
         if (!res.ok) {
-            throw new Error(await res.text());
+            const raw = await res.text();
+            if (res.status === 404) {
+                let errMsg = raw;
+                try {
+                    const j = JSON.parse(raw);
+                    if (j && j.error) errMsg = j.error;
+                } catch (eParse) {
+                    /* keep raw */
+                }
+                if (/not\s*found/i.test(String(errMsg))) {
+                    loadChatFilesPage();
+                    const cleared = (typeof window.t === 'function')
+                        ? window.t('chatFilesPage.folderRemovedStale')
+                        : '服务器上不存在该目录，列表已刷新。';
+                    if (typeof chatFilesShowToast === 'function') {
+                        chatFilesShowToast(cleared);
+                    } else {
+                        alert(cleared);
+                    }
+                    return;
+                }
+            }
+            throw new Error(raw || String(res.status));
         }
-        chatFilesRemoveSyntheticDirSubtree(rel);
         loadChatFilesPage();
     } catch (e) {
         alert((e && e.message) ? e.message : String(e));
@@ -1188,7 +1149,6 @@ async function submitChatFilesMkdir() {
             }
             throw new Error(errText || String(res.status));
         }
-        chatFilesRegisterSyntheticEmptyDir(chatFilesBrowsePath.slice(), name);
         closeChatFilesMkdirModal();
         loadChatFilesPage();
         const okMsg = (typeof window.t === 'function')

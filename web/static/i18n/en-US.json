@@ -1110,6 +1110,7 @@
     "folderPathCopied": "Folder path copied — paste into chat if needed",
     "folderEmpty": "This folder is empty",
     "confirmDeleteFolder": "Delete this folder and everything inside it? This cannot be undone.",
+    "folderRemovedStale": "That folder is not on the server anymore; list refreshed.",
     "deleteFolderTitle": "Delete folder",
     "uploadToFolderTitle": "Upload file into this folder",
     "newFolderButton": "New folder",

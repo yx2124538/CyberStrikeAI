@@ -3,7 +3,9 @@ package handler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -752,6 +754,137 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "配置已更新"})
+}
+
+// TestOpenAIRequest 测试OpenAI连接请求
+type TestOpenAIRequest struct {
+	BaseURL string `json:"base_url"`
+	APIKey  string `json:"api_key"`
+	Model   string `json:"model"`
+}
+
+// TestOpenAI 测试OpenAI API连接是否可用
+func (h *ConfigHandler) TestOpenAI(c *gin.Context) {
+	var req TestOpenAIRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数: " + err.Error()})
+		return
+	}
+
+	if strings.TrimSpace(req.APIKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "API Key 不能为空"})
+		return
+	}
+	if strings.TrimSpace(req.Model) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "模型不能为空"})
+		return
+	}
+
+	baseURL := strings.TrimSuffix(strings.TrimSpace(req.BaseURL), "/")
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+
+	// 构造一个最小的 chat completion 请求
+	payload := map[string]interface{}{
+		"model": req.Model,
+		"messages": []map[string]string{
+			{"role": "user", "content": "Hi"},
+		},
+		"max_tokens": 5,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "构造请求失败"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "构造HTTP请求失败: " + err.Error()})
+		return
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+strings.TrimSpace(req.APIKey))
+
+	start := time.Now()
+	resp, err := http.DefaultClient.Do(httpReq)
+	latency := time.Since(start)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   "连接失败: " + err.Error(),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		// 尝试提取错误信息
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		errMsg := string(respBody)
+		if json.Unmarshal(respBody, &errResp) == nil && errResp.Error.Message != "" {
+			errMsg = errResp.Error.Message
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success":     false,
+			"error":       fmt.Sprintf("API 返回错误 (HTTP %d): %s", resp.StatusCode, errMsg),
+			"status_code": resp.StatusCode,
+		})
+		return
+	}
+
+	// 解析响应并严格验证是否为有效的 chat completion 响应
+	var chatResp struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   "API 响应不是有效的 JSON，请检查 Base URL 是否正确",
+		})
+		return
+	}
+
+	// 严格校验：必须包含 choices 且有 assistant 回复
+	if len(chatResp.Choices) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   "API 响应缺少 choices 字段，请检查 Base URL 路径是否正确（通常以 /v1 结尾）",
+		})
+		return
+	}
+	if chatResp.ID == "" && chatResp.Model == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   "API 响应格式不符合 OpenAI 规范，请检查 Base URL 是否正确",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"model":      chatResp.Model,
+		"latency_ms": latency.Milliseconds(),
+	})
 }
 
 // ApplyConfig 应用配置（重新加载并重启相关服务）

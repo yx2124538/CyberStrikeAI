@@ -294,7 +294,7 @@
     "addTaskFailed": "添加任务失败",
     "confirmDeleteTask": "确定要删除这个任务吗？\n\n任务内容: {{message}}\n\n此操作不可恢复。",
     "deleteTaskFailed": "删除任务失败",
-    "paginationShow": "显示 {{start}}-{{end}} / 共 {{total}} 条",
+    "paginationShow": "显示 {{start}}-{{end}} / 共 {{total}} 条记录",
     "paginationPerPage": "每页显示",
     "paginationFirst": "首页",
     "paginationPrev": "上一页",

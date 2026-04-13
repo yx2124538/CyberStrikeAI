@@ -441,7 +441,9 @@ body {
     /* 确保底部左右角都是圆角 */
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
-    overflow: hidden;
+    /* 勿用 overflow:hidden：会覆盖 .page-content 的 overflow-y:auto，任务多时无法滚动 */
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 /* 对话页面布局 */
@@ -8196,6 +8198,37 @@ header {
     overflow: hidden;
 }
 
+/* 列表 + 底部分页同一外框，与 MCP 监控「表格 + 分页」一致 */
+.batch-queues-board {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg-primary);
+}
+
+.batch-queues-board .batch-queues-list {
+    margin-bottom: 0;
+    padding: 12px 16px;
+    box-sizing: border-box;
+}
+
+.batch-queues-board #batch-queues-pagination {
+    margin-top: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.batch-queues-board #batch-queues-pagination .monitor-pagination {
+    margin-top: 0;
+}
+
 .batch-queues-filters.tasks-filters {
     margin-bottom: 12px;
 }
@@ -9059,21 +9092,6 @@ header {
 
 .batch-queue-statsline__item--err {
     color: var(--error-color);
-}
-
-/* 任务列表与分页条分离，避免与最后一张卡片贴在一起 */
-#batch-queues-pagination.pagination-fixed {
-    margin-top: 8px;
-    padding-top: 10px;
-}
-
-#batch-queues-pagination .pagination {
-    padding: 12px 16px 12px;
-    font-size: 0.875rem;
-}
-
-#batch-queues-pagination .pagination-info {
-    color: var(--text-secondary);
 }
 
 .batch-queue-detail-info {

@@ -1156,14 +1156,14 @@ function renderBatchQueues() {
     renderBatchQueuesPagination();
 }
 
-// 渲染批量任务队列分页控件（参考Skills管理页面样式）
+// 渲染批量任务队列分页控件（结构与样式对齐 MCP 监控 .monitor-pagination）
 function renderBatchQueuesPagination() {
     const paginationContainer = document.getElementById('batch-queues-pagination');
     if (!paginationContainer) return;
     
     const { currentPage, pageSize, total, totalPages } = batchQueuesState;
     
-    // 即使只有一页也显示分页信息（参考Skills样式）
+    // 即使只有一页也显示分页信息（与 MCP 监控一致）
     if (total === 0) {
         paginationContainer.innerHTML = '';
         return;
@@ -1173,7 +1173,7 @@ function renderBatchQueuesPagination() {
     const start = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
     const end = total === 0 ? 0 : Math.min(currentPage * pageSize, total);
     
-    let paginationHTML = '<div class="pagination">';
+    let paginationHTML = '<div class="monitor-pagination">';
     
     // 左侧：显示范围信息和每页数量选择器（参考Skills样式）
     paginationHTML += `
@@ -1205,41 +1205,6 @@ function renderBatchQueuesPagination() {
     paginationHTML += '</div>';
     
     paginationContainer.innerHTML = paginationHTML;
-    
-    // 确保分页组件与列表内容区域对齐（不包括滚动条）
-    function alignPaginationWidth() {
-        const batchQueuesList = document.getElementById('batch-queues-list');
-        if (batchQueuesList && paginationContainer) {
-            // 获取列表的实际内容宽度（不包括滚动条）
-            const listClientWidth = batchQueuesList.clientWidth; // 可视区域宽度（不包括滚动条）
-            const listScrollHeight = batchQueuesList.scrollHeight; // 内容总高度
-            const listClientHeight = batchQueuesList.clientHeight; // 可视区域高度
-            const hasScrollbar = listScrollHeight > listClientHeight;
-            
-            // 如果列表有垂直滚动条，分页组件应该与列表内容区域对齐（clientWidth）
-            // 如果没有滚动条，使用100%宽度
-            if (hasScrollbar) {
-                // 分页组件应该与列表内容区域对齐，不包括滚动条
-                paginationContainer.style.width = `${listClientWidth}px`;
-            } else {
-                // 如果没有滚动条，使用100%宽度
-                paginationContainer.style.width = '100%';
-            }
-        }
-    }
-    
-    // 立即执行一次
-    alignPaginationWidth();
-    
-    // 监听窗口大小变化和列表内容变化
-    const resizeObserver = new ResizeObserver(() => {
-        alignPaginationWidth();
-    });
-    
-    const batchQueuesList = document.getElementById('batch-queues-list');
-    if (batchQueuesList) {
-        resizeObserver.observe(batchQueuesList);
-    }
 }
 
 // 跳转到指定页面

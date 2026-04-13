@@ -294,7 +294,7 @@
     "addTaskFailed": "Failed to add task",
     "confirmDeleteTask": "Delete this task?\n\nTask: {{message}}\n\nThis cannot be undone.",
     "deleteTaskFailed": "Failed to delete task",
-    "paginationShow": "{{start}}-{{end}} of {{total}}",
+    "paginationShow": "Show {{start}}-{{end}} of {{total}} records",
     "paginationPerPage": "Per page",
     "paginationFirst": "First",
     "paginationPrev": "Previous",

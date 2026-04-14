@@ -1358,9 +1358,14 @@ async function showBatchQueueDetail(queueId) {
         const tasksList = content.querySelector('.batch-queue-tasks-list');
         const savedModalBodyScrollTop = modalBody ? modalBody.scrollTop : 0;
         const savedTasksListScrollTop = tasksList ? tasksList.scrollTop : 0;
+        const prevTechDetails = content.querySelector('details.batch-queue-detail-tech');
+        const prevLayout = content.querySelector('.batch-queue-detail-layout[data-bq-detail-for]');
+        const prevDetailFor = prevLayout ? prevLayout.getAttribute('data-bq-detail-for') : null;
+        const sameQueueAsBefore = prevDetailFor === queue.id;
+        const savedTechDetailsOpen = sameQueueAsBefore && !!(prevTechDetails && prevTechDetails.open);
 
         content.innerHTML = `
-            <div class="batch-queue-detail-layout">
+            <div class="batch-queue-detail-layout" data-bq-detail-for="${escapeHtml(queue.id)}">
             <section class="batch-queue-detail-hero">
                 <span class="batch-queue-status ${pres.class}">${escapeHtml(pres.text)}</span>
                 ${pres.sublabel ? `<p class="batch-queue-detail-hero__sub">${escapeHtml(pres.sublabel)}</p>` : ''}
@@ -1424,11 +1429,18 @@ async function showBatchQueueDetail(queueId) {
             newTasksList.scrollTop = savedTasksListScrollTop;
         }
 
+        const newTechDetails = content.querySelector('details.batch-queue-detail-tech');
+        if (newTechDetails && savedTechDetailsOpen) {
+            newTechDetails.open = true;
+        }
+
         modal.style.display = 'block';
 
-        // 如果队列正在运行，自动刷新
+        // 仅运行中定时拉取详情；其它状态应停止，避免 innerHTML 重绘把 <details> 等 UI 打回默认态
         if (queue.status === 'running') {
             startBatchQueueRefresh(queueId);
+        } else {
+            stopBatchQueueRefresh();
         }
     } catch (error) {
         console.error('获取队列详情失败:', error);

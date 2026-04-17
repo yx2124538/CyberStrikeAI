@@ -32,6 +32,7 @@ const (
 	ToolBatchTaskGet             = "batch_task_get"
 	ToolBatchTaskCreate          = "batch_task_create"
 	ToolBatchTaskStart           = "batch_task_start"
+	ToolBatchTaskRerun           = "batch_task_rerun"
 	ToolBatchTaskPause           = "batch_task_pause"
 	ToolBatchTaskDelete          = "batch_task_delete"
 	ToolBatchTaskUpdateMetadata  = "batch_task_update_metadata"
@@ -63,6 +64,7 @@ func IsBuiltinTool(toolName string) bool {
 		ToolBatchTaskGet,
 		ToolBatchTaskCreate,
 		ToolBatchTaskStart,
+		ToolBatchTaskRerun,
 		ToolBatchTaskPause,
 		ToolBatchTaskDelete,
 		ToolBatchTaskUpdateMetadata,
@@ -98,6 +100,7 @@ func GetAllBuiltinTools() []string {
 		ToolBatchTaskGet,
 		ToolBatchTaskCreate,
 		ToolBatchTaskStart,
+		ToolBatchTaskRerun,
 		ToolBatchTaskPause,
 		ToolBatchTaskDelete,
 		ToolBatchTaskUpdateMetadata,

@@ -1781,6 +1781,34 @@ func (h *AgentHandler) StartBatchQueue(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "批量任务已开始执行", "queueId": queueID})
 }
 
+// RerunBatchQueue 重跑批量任务队列（重置所有子任务后重新执行）
+func (h *AgentHandler) RerunBatchQueue(c *gin.Context) {
+	queueID := c.Param("queueId")
+	queue, exists := h.batchTaskManager.GetBatchQueue(queueID)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "队列不存在"})
+		return
+	}
+	if queue.Status != "completed" && queue.Status != "cancelled" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅已完成或已取消的队列可以重跑"})
+		return
+	}
+	if !h.batchTaskManager.ResetQueueForRerun(queueID) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "重置队列失败"})
+		return
+	}
+	ok, err := h.startBatchQueueExecution(queueID, false)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "启动失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "批量任务已重新开始执行", "queueId": queueID})
+}
+
 // PauseBatchQueue 暂停批量任务队列
 func (h *AgentHandler) PauseBatchQueue(c *gin.Context) {
 	queueID := c.Param("queueId")
@@ -1792,18 +1820,19 @@ func (h *AgentHandler) PauseBatchQueue(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "批量任务已暂停"})
 }
 
-// UpdateBatchQueueMetadata 修改批量任务队列的标题和角色
+// UpdateBatchQueueMetadata 修改批量任务队列的标题、角色和代理模式
 func (h *AgentHandler) UpdateBatchQueueMetadata(c *gin.Context) {
 	queueID := c.Param("queueId")
 	var req struct {
-		Title string `json:"title"`
-		Role  string `json:"role"`
+		Title     string `json:"title"`
+		Role      string `json:"role"`
+		AgentMode string `json:"agentMode"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.batchTaskManager.UpdateQueueMetadata(queueID, req.Title, req.Role); err != nil {
+	if err := h.batchTaskManager.UpdateQueueMetadata(queueID, req.Title, req.Role, req.AgentMode); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

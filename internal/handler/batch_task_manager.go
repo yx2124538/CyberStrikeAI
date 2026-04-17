@@ -645,15 +645,14 @@ func (m *BatchTaskManager) UpdateQueueSchedule(queueID, scheduleMode, cronExpr s
 	}
 }
 
-// UpdateQueueMetadata 更新队列标题和角色（非 running 时可用）
-func (m *BatchTaskManager) UpdateQueueMetadata(queueID, title, role string) error {
+// UpdateQueueMetadata 更新队列标题、角色和代理模式（非 running 时可用）
+func (m *BatchTaskManager) UpdateQueueMetadata(queueID, title, role, agentMode string) error {
 	if utf8.RuneCountInString(title) > MaxBatchQueueTitleLen {
 		return fmt.Errorf("标题不能超过 %d 个字符", MaxBatchQueueTitleLen)
 	}
 	if utf8.RuneCountInString(role) > MaxBatchQueueRoleLen {
 		return fmt.Errorf("角色名不能超过 %d 个字符", MaxBatchQueueRoleLen)
 	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -665,11 +664,19 @@ func (m *BatchTaskManager) UpdateQueueMetadata(queueID, title, role string) erro
 		return fmt.Errorf("队列正在运行中，无法修改")
 	}
 
+	// 如果未传 agentMode，保留原值
+	if strings.TrimSpace(agentMode) != "" {
+		agentMode = normalizeBatchQueueAgentMode(agentMode)
+	} else {
+		agentMode = queue.AgentMode
+	}
+
 	queue.Title = title
 	queue.Role = role
+	queue.AgentMode = agentMode
 
 	if m.db != nil {
-		if err := m.db.UpdateBatchQueueMetadata(queueID, title, role); err != nil {
+		if err := m.db.UpdateBatchQueueMetadata(queueID, title, role, agentMode); err != nil {
 			m.logger.Warn("batch queue DB metadata update failed", zap.String("queueId", queueID), zap.Error(err))
 		}
 	}

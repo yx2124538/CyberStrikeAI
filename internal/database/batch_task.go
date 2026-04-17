@@ -352,11 +352,11 @@ func (db *DB) UpdateBatchQueueCurrentIndex(queueID string, currentIndex int) err
 	return nil
 }
 
-// UpdateBatchQueueMetadata 更新批量任务队列标题和角色
-func (db *DB) UpdateBatchQueueMetadata(queueID, title, role string) error {
+// UpdateBatchQueueMetadata 更新批量任务队列标题、角色和代理模式
+func (db *DB) UpdateBatchQueueMetadata(queueID, title, role, agentMode string) error {
 	_, err := db.Exec(
-		"UPDATE batch_task_queues SET title = ?, role = ? WHERE id = ?",
-		title, role, queueID,
+		"UPDATE batch_task_queues SET title = ?, role = ?, agent_mode = ? WHERE id = ?",
+		title, role, agentMode, queueID,
 	)
 	if err != nil {
 		return fmt.Errorf("更新批量任务队列元数据失败: %w", err)

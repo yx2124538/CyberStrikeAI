@@ -263,6 +263,47 @@ agent_mode: single（默认）或 multi（需系统启用多代理）。schedule
 		return batchMCPTextResult("已提交启动，队列将开始执行。", false), nil
 	})
 
+	// --- rerun (reset + start for completed/cancelled queues) ---
+	reg(mcp.Tool{
+		Name:             builtin.ToolBatchTaskRerun,
+		Description:      "重跑已完成或已取消的批量任务队列。会重置所有子任务状态后重新执行一轮。",
+		ShortDescription: "重跑批量任务队列",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"queue_id": map[string]interface{}{
+					"type":        "string",
+					"description": "队列 ID",
+				},
+			},
+			"required": []string{"queue_id"},
+		},
+	}, func(ctx context.Context, args map[string]interface{}) (*mcp.ToolResult, error) {
+		qid := mcpArgString(args, "queue_id")
+		if qid == "" {
+			return batchMCPTextResult("queue_id 不能为空", true), nil
+		}
+		queue, exists := h.batchTaskManager.GetBatchQueue(qid)
+		if !exists {
+			return batchMCPTextResult("队列不存在: "+qid, true), nil
+		}
+		if queue.Status != "completed" && queue.Status != "cancelled" {
+			return batchMCPTextResult("仅已完成或已取消的队列可以重跑，当前状态: "+queue.Status, true), nil
+		}
+		if !h.batchTaskManager.ResetQueueForRerun(qid) {
+			return batchMCPTextResult("重置队列失败", true), nil
+		}
+		ok, err := h.startBatchQueueExecution(qid, false)
+		if !ok {
+			return batchMCPTextResult("启动失败", true), nil
+		}
+		if err != nil {
+			return batchMCPTextResult("启动失败: "+err.Error(), true), nil
+		}
+		logger.Info("MCP batch_task_rerun", zap.String("queueId", qid))
+		return batchMCPTextResult("已重置并重新启动队列。", false), nil
+	})
+
 	// --- pause ---
 	reg(mcp.Tool{
 		Name:             builtin.ToolBatchTaskPause,
@@ -317,11 +358,11 @@ agent_mode: single（默认）或 multi（需系统启用多代理）。schedule
 		return batchMCPTextResult("队列已删除。", false), nil
 	})
 
-	// --- update metadata (title/role) ---
+	// --- update metadata (title/role/agentMode) ---
 	reg(mcp.Tool{
 		Name:             builtin.ToolBatchTaskUpdateMetadata,
-		Description:      "修改批量任务队列的标题和角色。仅在队列非 running 状态下可修改。",
-		ShortDescription: "修改批量任务队列标题/角色",
+		Description:      "修改批量任务队列的标题、角色和代理模式。仅在队列非 running 状态下可修改。",
+		ShortDescription: "修改批量任务队列标题/角色/代理模式",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -337,6 +378,11 @@ agent_mode: single（默认）或 multi（需系统启用多代理）。schedule
 					"type":        "string",
 					"description": "新角色名（空字符串使用默认角色）",
 				},
+				"agent_mode": map[string]interface{}{
+					"type":        "string",
+					"description": "代理模式：single（单代理 ReAct）或 multi（多代理）",
+					"enum":        []string{"single", "multi"},
+				},
 			},
 			"required": []string{"queue_id"},
 		},
@@ -347,7 +393,8 @@ agent_mode: single（默认）或 multi（需系统启用多代理）。schedule
 		}
 		title := mcpArgString(args, "title")
 		role := mcpArgString(args, "role")
-		if err := h.batchTaskManager.UpdateQueueMetadata(qid, title, role); err != nil {
+		agentMode := mcpArgString(args, "agent_mode")
+		if err := h.batchTaskManager.UpdateQueueMetadata(qid, title, role, agentMode); err != nil {
 			return batchMCPTextResult(err.Error(), true), nil
 		}
 		updated, _ := h.batchTaskManager.GetBatchQueue(qid)

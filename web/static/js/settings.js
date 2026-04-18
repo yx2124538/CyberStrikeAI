@@ -182,15 +182,49 @@ async function loadConfig(loadTools = true) {
                 retrievalThresholdInput.value = knowledge.retrieval?.similarity_threshold || 0.7;
             }
             
-            const retrievalWeightInput = document.getElementById('knowledge-retrieval-hybrid-weight');
-            if (retrievalWeightInput) {
-                const hybridWeight = knowledge.retrieval?.hybrid_weight;
-                // 允许0.0值，只有undefined/null时才使用默认值
-                retrievalWeightInput.value = (hybridWeight !== undefined && hybridWeight !== null) ? hybridWeight : 0.7;
+            const subIdxFilterInput = document.getElementById('knowledge-retrieval-sub-index-filter');
+            if (subIdxFilterInput) {
+                subIdxFilterInput.value = knowledge.retrieval?.sub_index_filter || '';
+            }
+
+            const post = knowledge.retrieval?.post_retrieve || {};
+            const prefetchInput = document.getElementById('knowledge-post-retrieve-prefetch-top-k');
+            if (prefetchInput) {
+                prefetchInput.value = post.prefetch_top_k ?? 0;
+            }
+            const maxCharsInput = document.getElementById('knowledge-post-retrieve-max-chars');
+            if (maxCharsInput) {
+                maxCharsInput.value = post.max_context_chars ?? 0;
+            }
+            const maxTokInput = document.getElementById('knowledge-post-retrieve-max-tokens');
+            if (maxTokInput) {
+                maxTokInput.value = post.max_context_tokens ?? 0;
             }
 
             // 索引配置
             const indexing = knowledge.indexing || {};
+            const chunkStrategySelect = document.getElementById('knowledge-indexing-chunk-strategy');
+            if (chunkStrategySelect) {
+                const v = (indexing.chunk_strategy || 'markdown_then_recursive').toLowerCase();
+                chunkStrategySelect.value = v === 'recursive' ? 'recursive' : 'markdown_then_recursive';
+            }
+            const reqTimeoutInput = document.getElementById('knowledge-indexing-request-timeout');
+            if (reqTimeoutInput) {
+                reqTimeoutInput.value = indexing.request_timeout_seconds ?? 120;
+            }
+            const batchSizeInput = document.getElementById('knowledge-indexing-batch-size');
+            if (batchSizeInput) {
+                batchSizeInput.value = indexing.batch_size ?? 64;
+            }
+            const preferFileCb = document.getElementById('knowledge-indexing-prefer-source-file');
+            if (preferFileCb) {
+                preferFileCb.checked = indexing.prefer_source_file === true;
+            }
+            const subIdxInput = document.getElementById('knowledge-indexing-sub-indexes');
+            if (subIdxInput) {
+                const arr = indexing.sub_indexes;
+                subIdxInput.value = Array.isArray(arr) ? arr.join(', ') : (typeof arr === 'string' ? arr : '');
+            }
             const chunkSizeInput = document.getElementById('knowledge-indexing-chunk-size');
             if (chunkSizeInput) {
                 chunkSizeInput.value = indexing.chunk_size || 512;
@@ -811,20 +845,33 @@ async function applySettings() {
                     const val = parseFloat(document.getElementById('knowledge-retrieval-similarity-threshold')?.value);
                     return isNaN(val) ? 0.7 : val;
                 })(),
-                hybrid_weight: (() => {
-                    const val = parseFloat(document.getElementById('knowledge-retrieval-hybrid-weight')?.value);
-                    return isNaN(val) ? 0.7 : val; // 允许0.0值，只有NaN时才使用默认值
-                })()
+                sub_index_filter: document.getElementById('knowledge-retrieval-sub-index-filter')?.value?.trim() || '',
+                post_retrieve: {
+                    prefetch_top_k: parseInt(document.getElementById('knowledge-post-retrieve-prefetch-top-k')?.value, 10) || 0,
+                    max_context_chars: parseInt(document.getElementById('knowledge-post-retrieve-max-chars')?.value, 10) || 0,
+                    max_context_tokens: parseInt(document.getElementById('knowledge-post-retrieve-max-tokens')?.value, 10) || 0
+                }
             },
-            indexing: {
-                chunk_size: parseInt(document.getElementById("knowledge-indexing-chunk-size")?.value) || 512,
-                chunk_overlap: parseInt(document.getElementById("knowledge-indexing-chunk-overlap")?.value) ?? 50,
-                max_chunks_per_item: parseInt(document.getElementById("knowledge-indexing-max-chunks-per-item")?.value) ?? 0,
-                max_rpm: parseInt(document.getElementById("knowledge-indexing-max-rpm")?.value) ?? 0,
-                rate_limit_delay_ms: parseInt(document.getElementById("knowledge-indexing-rate-limit-delay-ms")?.value) ?? 300,
-                max_retries: parseInt(document.getElementById("knowledge-indexing-max-retries")?.value) ?? 3,
-                retry_delay_ms: parseInt(document.getElementById("knowledge-indexing-retry-delay-ms")?.value) ?? 1000
-            }
+            indexing: (() => {
+                const subRaw = document.getElementById("knowledge-indexing-sub-indexes")?.value?.trim() || "";
+                const sub_indexes = subRaw
+                    ? subRaw.split(/[,，]/).map(s => s.trim()).filter(Boolean)
+                    : [];
+                return {
+                    chunk_strategy: document.getElementById("knowledge-indexing-chunk-strategy")?.value || "markdown_then_recursive",
+                    request_timeout_seconds: parseInt(document.getElementById("knowledge-indexing-request-timeout")?.value, 10) || 0,
+                    batch_size: parseInt(document.getElementById("knowledge-indexing-batch-size")?.value, 10) || 0,
+                    prefer_source_file: document.getElementById("knowledge-indexing-prefer-source-file")?.checked === true,
+                    sub_indexes,
+                    chunk_size: parseInt(document.getElementById("knowledge-indexing-chunk-size")?.value) || 512,
+                    chunk_overlap: parseInt(document.getElementById("knowledge-indexing-chunk-overlap")?.value) ?? 50,
+                    max_chunks_per_item: parseInt(document.getElementById("knowledge-indexing-max-chunks-per-item")?.value) ?? 0,
+                    max_rpm: parseInt(document.getElementById("knowledge-indexing-max-rpm")?.value) ?? 0,
+                    rate_limit_delay_ms: parseInt(document.getElementById("knowledge-indexing-rate-limit-delay-ms")?.value) ?? 300,
+                    max_retries: parseInt(document.getElementById("knowledge-indexing-max-retries")?.value) ?? 3,
+                    retry_delay_ms: parseInt(document.getElementById("knowledge-indexing-retry-delay-ms")?.value) ?? 1000
+                };
+            })()
         };
         
         const wecomAgentIdVal = document.getElementById('robot-wecom-agent-id')?.value.trim();

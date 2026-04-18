@@ -1526,13 +1526,63 @@
                                             <small class="form-hint" data-i18n="settingsBasic.similarityHint">相似度阈值（0-1），低于此值的结果将被过滤</small>
                                         </div>
                                         <div class="form-group">
-                                            <label for="knowledge-retrieval-hybrid-weight" data-i18n="settingsBasic.hybridWeight">混合检索权重</label>
-                                            <input type="number" id="knowledge-retrieval-hybrid-weight" min="0" max="1" step="0.1" data-i18n="settingsBasic.hybridPlaceholder" data-i18n-attr="placeholder" placeholder="0.7" />
-                                            <small class="form-hint" data-i18n="settingsBasic.hybridHint">向量检索的权重（0-1），1.0表示纯向量检索，0.0表示纯关键词检索</small>
+                                            <label for="knowledge-retrieval-sub-index-filter" data-i18n="settingsBasic.subIndexFilter">子索引过滤（可选）</label>
+                                            <input type="text" id="knowledge-retrieval-sub-index-filter" data-i18n="settingsBasic.subIndexFilterPlaceholder" data-i18n-attr="placeholder" placeholder="与索引 sub_indexes 标签一致，如 prod" />
+                                            <small class="form-hint" data-i18n="settingsBasic.subIndexFilterHint">留空表示不过滤；非空时仅检索 sub_indexes 含该标签的向量行（未打标旧数据仍会命中）。</small>
+                                        </div>
+
+                                        <div class="settings-subsection-header">
+                                            <h5 data-i18n="settingsBasic.postRetrieveHeader">检索后处理（去重 / 预算）</h5>
+                                        </div>
+                                        <p class="form-hint" style="margin: 0 0 12px 0;" data-i18n="settingsBasic.postRetrieveDedupeAuto">检索结果会自动按正文规范化去重（合并仅空白不同的重复片段），无需配置。</p>
+                                        <div class="form-group">
+                                            <label for="knowledge-post-retrieve-prefetch-top-k" data-i18n="settingsBasic.prefetchTopK">预取候选数（向量阶段）</label>
+                                            <input type="number" id="knowledge-post-retrieve-prefetch-top-k" min="0" max="200" data-i18n="settingsBasic.prefetchTopKPlaceholder" data-i18n-attr="placeholder" placeholder="0" />
+                                            <small class="form-hint" data-i18n="settingsBasic.prefetchTopKHint">0 表示与 Top-K 相同；大于 Top-K 时先多取候选再经去重/截断回到 Top-K（上限 200）。</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="knowledge-post-retrieve-max-chars" data-i18n="settingsBasic.maxContextChars">返回内容最大字符数（Unicode）</label>
+                                            <input type="number" id="knowledge-post-retrieve-max-chars" min="0" max="1000000" data-i18n="settingsBasic.maxContextCharsPlaceholder" data-i18n-attr="placeholder" placeholder="0" />
+                                            <small class="form-hint" data-i18n="settingsBasic.maxContextCharsHint">0 表示不限制；按检索顺序整段保留 chunk，超出则丢弃后续。</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="knowledge-post-retrieve-max-tokens" data-i18n="settingsBasic.maxContextTokens">返回内容最大 Token 数</label>
+                                            <input type="number" id="knowledge-post-retrieve-max-tokens" min="0" max="1000000" data-i18n="settingsBasic.maxContextTokensPlaceholder" data-i18n-attr="placeholder" placeholder="0" />
+                                            <small class="form-hint" data-i18n="settingsBasic.maxContextTokensHint">0 表示不限制；tiktoken 估算（与嵌入模型名一致，失败则用 cl100k_base）。</small>
                                         </div>
 
                                         <div class="settings-subsection-header">
                                             <h5 data-i18n="settingsBasic.indexConfig">索引配置</h5>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="knowledge-indexing-chunk-strategy" data-i18n="settingsBasic.chunkStrategy">分块策略</label>
+                                            <select id="knowledge-indexing-chunk-strategy">
+                                                <option value="markdown_then_recursive" data-i18n="settingsBasic.chunkStrategyMarkdownRecursive">Markdown 标题切分后递归（推荐）</option>
+                                                <option value="recursive" data-i18n="settingsBasic.chunkStrategyRecursive">仅递归切分</option>
+                                            </select>
+                                            <small class="form-hint" data-i18n="settingsBasic.chunkStrategyHint">与 Eino 官方索引链一致：技术文档建议 Markdown 标题 + 递归；纯文本可仅用递归。</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="knowledge-indexing-request-timeout" data-i18n="settingsBasic.requestTimeoutSeconds">嵌入 HTTP 超时（秒）</label>
+                                            <input type="number" id="knowledge-indexing-request-timeout" min="0" max="600" data-i18n="settingsBasic.requestTimeoutPlaceholder" data-i18n-attr="placeholder" placeholder="120" />
+                                            <small class="form-hint" data-i18n="settingsBasic.requestTimeoutHint">0 表示使用默认 120 秒；与 OpenAI 嵌入客户端一致。</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="knowledge-indexing-batch-size" data-i18n="settingsBasic.batchSize">嵌入批大小</label>
+                                            <input type="number" id="knowledge-indexing-batch-size" min="1" max="256" data-i18n="settingsBasic.batchSizePlaceholder" data-i18n-attr="placeholder" placeholder="64" />
+                                            <small class="form-hint" data-i18n="settingsBasic.batchSizeHint">单次请求嵌入的文本条数上限（SQLite 索引写入分批）。</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="knowledge-indexing-prefer-source-file" />
+                                                <span data-i18n="settingsBasic.preferSourceFile">索引时优先从磁盘源文件读取（Eino FileLoader）</span>
+                                            </label>
+                                            <small class="form-hint" data-i18n="settingsBasic.preferSourceFileHint">开启后以 file_path 为准；读取失败时回退数据库中的 content。</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="knowledge-indexing-sub-indexes" data-i18n="settingsBasic.subIndexes">Eino 子索引（逗号分隔）</label>
+                                            <input type="text" id="knowledge-indexing-sub-indexes" data-i18n="settingsBasic.subIndexesPlaceholder" data-i18n-attr="placeholder" placeholder="例如: prod, knowledge" />
+                                            <small class="form-hint" data-i18n="settingsBasic.subIndexesHint">传入 indexer.WithSubIndexes，写入向量行的 sub_indexes 字段（逻辑分区标记）。</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="knowledge-indexing-chunk-size" data-i18n="settingsBasic.chunkSize">分块大小（Chunk Size）</label>

@@ -4181,7 +4181,7 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 				"post": map[string]interface{}{
 					"tags":        []string{"知识库"},
 					"summary":     "搜索知识库",
-					"description": "在知识库中搜索相关内容。使用向量检索和混合搜索技术，能够根据查询内容的语义相似度和关键词匹配，自动找到最相关的知识片段。\n**搜索说明**：\n- 支持语义相似度搜索（向量检索）\n- 支持关键词匹配（BM25）\n- 支持混合搜索（结合向量和关键词）\n- 可以按风险类型过滤（如：SQL注入、XSS、文件上传等）\n- 建议先调用 `/api/knowledge/categories` 获取可用的风险类型列表\n**使用示例**：\n```json\n{\n  \"query\": \"SQL注入漏洞的检测方法\",\n  \"riskType\": \"SQL注入\",\n  \"topK\": 5,\n  \"threshold\": 0.7\n}\n```",
+					"description": "在知识库中搜索相关内容。基于向量检索，按查询与知识片段的语义相似度（余弦）返回最相关结果。\n**搜索说明**：\n- 语义相似度搜索：嵌入向量 + 余弦相似度，可配置相似度阈值与 TopK\n- 可按风险类型等元数据过滤（如：SQL注入、XSS、文件上传等）\n- 建议先调用 `/api/knowledge/categories` 获取可用的风险类型列表\n**使用示例**：\n```json\n{\n  \"query\": \"SQL注入漏洞的检测方法\",\n  \"riskType\": \"SQL注入\",\n  \"topK\": 5,\n  \"threshold\": 0.7\n}\n```",
 					"operationId": "searchKnowledge",
 					"requestBody": map[string]interface{}{
 						"required": true,

@@ -81,8 +81,8 @@ func RegisterKnowledgeTool(
 	// 注册第二个工具：搜索知识库（保持原有功能）
 	searchTool := mcp.Tool{
 		Name:             builtin.ToolSearchKnowledgeBase,
-		Description:      "在知识库中搜索相关的安全知识。当你需要了解特定漏洞类型、攻击技术、检测方法等安全知识时，可以使用此工具进行检索。工具使用向量检索和混合搜索技术，能够根据查询内容的语义相似度和关键词匹配，自动找到最相关的知识片段。建议：在搜索前可以先调用 " + builtin.ToolListKnowledgeRiskTypes + " 工具获取可用的风险类型，然后使用正确的 risk_type 参数进行精确搜索，这样可以大幅减少检索时间。",
-		ShortDescription: "搜索知识库中的安全知识（支持向量检索和混合搜索）",
+		Description:      "在知识库中搜索相关的安全知识。当你需要了解特定漏洞类型、攻击技术、检测方法等安全知识时，可以使用此工具进行检索。工具基于向量嵌入与余弦相似度检索（与 Eino retriever 语义一致）。建议：在搜索前可以先调用 " + builtin.ToolListKnowledgeRiskTypes + " 工具获取可用的风险类型，然后使用正确的 risk_type 参数进行精确搜索，这样可以大幅减少检索时间。",
+		ShortDescription: "搜索知识库中的安全知识（向量语义检索）",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -123,7 +123,7 @@ func RegisterKnowledgeTool(
 			zap.String("riskType", riskType),
 		)
 
-		// 执行检索
+		// 检索统一走 Retriever.Search → VectorEinoRetriever（Eino retriever 语义）。
 		searchReq := &SearchRequest{
 			Query:    query,
 			RiskType: riskType,
@@ -158,17 +158,16 @@ func RegisterKnowledgeTool(
 		// 格式化结果
 		var resultText strings.Builder
 
-		// 先按混合分数排序，确保文档顺序是按混合分数的（混合检索的核心）
+		// 按余弦相似度（Score）降序
 		sort.Slice(results, func(i, j int) bool {
 			return results[i].Score > results[j].Score
 		})
 
 		// 按文档分组结果，以便更好地展示上下文
-		// 使用有序的slice来保持文档顺序（按最高混合分数）
 		type itemGroup struct {
 			itemID   string
 			results  []*RetrievalResult
-			maxScore float64 // 该文档的最高混合分数
+			maxScore float64 // 该文档块的最高相似度
 		}
 		itemGroups := make([]*itemGroup, 0)
 		itemMap := make(map[string]*itemGroup)
@@ -191,7 +190,7 @@ func RegisterKnowledgeTool(
 			}
 		}
 
-		// 按最高混合分数排序文档组
+		// 按文档内最高相似度排序
 		sort.Slice(itemGroups, func(i, j int) bool {
 			return itemGroups[i].maxScore > itemGroups[j].maxScore
 		})
@@ -199,12 +198,11 @@ func RegisterKnowledgeTool(
 		// 收集检索到的知识项ID（用于日志）
 		retrievedItemIDs := make([]string, 0, len(itemGroups))
 
-		resultText.WriteString(fmt.Sprintf("找到 %d 条相关知识（包含上下文扩展）：\n\n", len(results)))
+		resultText.WriteString(fmt.Sprintf("找到 %d 条相关知识片段：\n\n", len(results)))
 
 		resultIndex := 1
 		for _, group := range itemGroups {
 			itemResults := group.results
-			// 找到混合分数最高的作为主结果（使用混合分数，而不是相似度）
 			mainResult := itemResults[0]
 			maxScore := mainResult.Score
 			for _, result := range itemResults {
@@ -219,9 +217,8 @@ func RegisterKnowledgeTool(
 				return itemResults[i].Chunk.ChunkIndex < itemResults[j].Chunk.ChunkIndex
 			})
 
-			// 显示主结果（混合分数最高的，同时显示相似度和混合分数）
-			resultText.WriteString(fmt.Sprintf("--- 结果 %d (相似度: %.2f%%, 混合分数: %.2f%%) ---\n",
-				resultIndex, mainResult.Similarity*100, mainResult.Score*100))
+			resultText.WriteString(fmt.Sprintf("--- 结果 %d (相似度: %.2f%%) ---\n",
+				resultIndex, mainResult.Similarity*100))
 			resultText.WriteString(fmt.Sprintf("来源: [%s] %s (ID: %s)\n", mainResult.Item.Category, mainResult.Item.Title, mainResult.Item.ID))
 
 			// 按逻辑顺序显示所有chunk（包括主结果和扩展的chunk）

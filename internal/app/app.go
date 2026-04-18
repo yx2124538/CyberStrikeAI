@@ -19,7 +19,6 @@ import (
 	"cyberstrike-ai/internal/logger"
 	"cyberstrike-ai/internal/mcp"
 	"cyberstrike-ai/internal/mcp/builtin"
-	"cyberstrike-ai/internal/openai"
 	"cyberstrike-ai/internal/robot"
 	"cyberstrike-ai/internal/security"
 	"cyberstrike-ai/internal/skills"
@@ -185,22 +184,25 @@ func New(cfg *config.Config, log *logger.Logger) (*App, error) {
 			cfg.Knowledge.Embedding.BaseURL = cfg.OpenAI.BaseURL
 		}
 
-		httpClient := &http.Client{
-			Timeout: 30 * time.Minute,
+		embedder, err := knowledge.NewEmbedder(context.Background(), &cfg.Knowledge, &cfg.OpenAI, log.Logger)
+		if err != nil {
+			return nil, fmt.Errorf("初始化知识库嵌入器失败: %w", err)
 		}
-		openAIClient := openai.NewClient(&cfg.OpenAI, httpClient, log.Logger)
-		embedder := knowledge.NewEmbedder(&cfg.Knowledge, &cfg.OpenAI, openAIClient, log.Logger)
 
 		// 创建检索器
 		retrievalConfig := &knowledge.RetrievalConfig{
 			TopK:                cfg.Knowledge.Retrieval.TopK,
 			SimilarityThreshold: cfg.Knowledge.Retrieval.SimilarityThreshold,
-			HybridWeight:        cfg.Knowledge.Retrieval.HybridWeight,
+			SubIndexFilter:      cfg.Knowledge.Retrieval.SubIndexFilter,
+			PostRetrieve:        cfg.Knowledge.Retrieval.PostRetrieve,
 		}
 		knowledgeRetriever = knowledge.NewRetriever(knowledgeDB, embedder, retrievalConfig, log.Logger)
 
-		// 创建索引器
-		knowledgeIndexer = knowledge.NewIndexer(knowledgeDB, embedder, log.Logger, &cfg.Knowledge.Indexing)
+		// 创建索引器（Eino Compose 链）
+		knowledgeIndexer, err = knowledge.NewIndexer(context.Background(), knowledgeDB, embedder, log.Logger, &cfg.Knowledge)
+		if err != nil {
+			return nil, fmt.Errorf("初始化知识库索引器失败: %w", err)
+		}
 
 		// 注册知识检索工具到MCP服务器
 		knowledge.RegisterKnowledgeTool(mcpServer, knowledgeRetriever, knowledgeManager, log.Logger)
@@ -1697,22 +1699,25 @@ func initializeKnowledge(
 		cfg.Knowledge.Embedding.BaseURL = cfg.OpenAI.BaseURL
 	}
 
-	httpClient := &http.Client{
-		Timeout: 30 * time.Minute,
+	embedder, err := knowledge.NewEmbedder(context.Background(), &cfg.Knowledge, &cfg.OpenAI, logger)
+	if err != nil {
+		return nil, fmt.Errorf("初始化知识库嵌入器失败: %w", err)
 	}
-	openAIClient := openai.NewClient(&cfg.OpenAI, httpClient, logger)
-	embedder := knowledge.NewEmbedder(&cfg.Knowledge, &cfg.OpenAI, openAIClient, logger)
 
 	// 创建检索器
 	retrievalConfig := &knowledge.RetrievalConfig{
 		TopK:                cfg.Knowledge.Retrieval.TopK,
 		SimilarityThreshold: cfg.Knowledge.Retrieval.SimilarityThreshold,
-		HybridWeight:        cfg.Knowledge.Retrieval.HybridWeight,
+		SubIndexFilter:      cfg.Knowledge.Retrieval.SubIndexFilter,
+		PostRetrieve:        cfg.Knowledge.Retrieval.PostRetrieve,
 	}
 	knowledgeRetriever := knowledge.NewRetriever(knowledgeDB, embedder, retrievalConfig, logger)
 
-	// 创建索引器
-	knowledgeIndexer := knowledge.NewIndexer(knowledgeDB, embedder, logger, &cfg.Knowledge.Indexing)
+	// 创建索引器（Eino Compose 链）
+	knowledgeIndexer, err := knowledge.NewIndexer(context.Background(), knowledgeDB, embedder, logger, &cfg.Knowledge)
+	if err != nil {
+		return nil, fmt.Errorf("初始化知识库索引器失败: %w", err)
+	}
 
 	// 注册知识检索工具到MCP服务器
 	knowledge.RegisterKnowledgeTool(mcpServer, knowledgeRetriever, knowledgeManager, logger)

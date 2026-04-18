@@ -80,7 +80,7 @@ type RetrievalResult struct {
 	Chunk      *KnowledgeChunk `json:"chunk"`
 	Item       *KnowledgeItem  `json:"item"`
 	Similarity float64         `json:"similarity"` // 相似度分数
-	Score      float64         `json:"score"`      // 综合分数（混合检索）
+	Score      float64         `json:"score"`      // 与 Similarity 相同：余弦相似度
 }
 
 // RetrievalLog 检索日志
@@ -115,8 +115,9 @@ type CategoryWithItems struct {
 
 // SearchRequest 搜索请求
 type SearchRequest struct {
-	Query     string  `json:"query"`
-	RiskType  string  `json:"riskType,omitempty"`  // 可选：指定风险类型
-	TopK      int     `json:"topK,omitempty"`      // 返回 Top-K 结果，默认 5
-	Threshold float64 `json:"threshold,omitempty"` // 相似度阈值，默认 0.7
+	Query          string  `json:"query"`
+	RiskType       string  `json:"riskType,omitempty"`       // 可选：指定风险类型
+	SubIndexFilter string  `json:"subIndexFilter,omitempty"` // 可选：仅保留 sub_indexes 含该标签的行（含未打标旧数据）
+	TopK           int     `json:"topK,omitempty"`           // 返回 Top-K 结果，默认 5
+	Threshold      float64 `json:"threshold,omitempty"`      // 相似度阈值，默认 0.7
 }

@@ -718,6 +718,9 @@ func (db *DB) initKnowledgeTables() error {
 		chunk_index INTEGER NOT NULL,
 		chunk_text TEXT NOT NULL,
 		embedding TEXT NOT NULL,
+		sub_indexes TEXT NOT NULL DEFAULT '',
+		embedding_model TEXT NOT NULL DEFAULT '',
+		embedding_dim INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (item_id) REFERENCES knowledge_base_items(id) ON DELETE CASCADE
 	);`
@@ -759,7 +762,44 @@ func (db *DB) initKnowledgeTables() error {
 		return fmt.Errorf("创建索引失败: %w", err)
 	}
 
+	if err := db.migrateKnowledgeEmbeddingsColumns(); err != nil {
+		return fmt.Errorf("迁移 knowledge_embeddings 列失败: %w", err)
+	}
+
 	db.logger.Info("知识库数据库表初始化完成")
+	return nil
+}
+
+// migrateKnowledgeEmbeddingsColumns 为已有库补充 sub_indexes、embedding_model、embedding_dim。
+func (db *DB) migrateKnowledgeEmbeddingsColumns() error {
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='knowledge_embeddings'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	migrations := []struct {
+		col  string
+		stmt string
+	}{
+		{"sub_indexes", `ALTER TABLE knowledge_embeddings ADD COLUMN sub_indexes TEXT NOT NULL DEFAULT ''`},
+		{"embedding_model", `ALTER TABLE knowledge_embeddings ADD COLUMN embedding_model TEXT NOT NULL DEFAULT ''`},
+		{"embedding_dim", `ALTER TABLE knowledge_embeddings ADD COLUMN embedding_dim INTEGER NOT NULL DEFAULT 0`},
+	}
+	for _, m := range migrations {
+		var colCount int
+		q := `SELECT COUNT(*) FROM pragma_table_info('knowledge_embeddings') WHERE name = ?`
+		if err := db.QueryRow(q, m.col).Scan(&colCount); err != nil {
+			return err
+		}
+		if colCount > 0 {
+			continue
+		}
+		if _, err := db.Exec(m.stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

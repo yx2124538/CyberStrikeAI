@@ -642,7 +642,6 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 			zap.String("embedding_model", h.config.Knowledge.Embedding.Model),
 			zap.Int("retrieval_top_k", h.config.Knowledge.Retrieval.TopK),
 			zap.Float64("similarity_threshold", h.config.Knowledge.Retrieval.SimilarityThreshold),
-			zap.Float64("hybrid_weight", h.config.Knowledge.Retrieval.HybridWeight),
 		)
 	}
 
@@ -1051,13 +1050,13 @@ func (h *ConfigHandler) ApplyConfig(c *gin.Context) {
 		retrievalConfig := &knowledge.RetrievalConfig{
 			TopK:                h.config.Knowledge.Retrieval.TopK,
 			SimilarityThreshold: h.config.Knowledge.Retrieval.SimilarityThreshold,
-			HybridWeight:        h.config.Knowledge.Retrieval.HybridWeight,
+			SubIndexFilter:      h.config.Knowledge.Retrieval.SubIndexFilter,
+			PostRetrieve:        h.config.Knowledge.Retrieval.PostRetrieve,
 		}
 		h.retrieverUpdater.UpdateConfig(retrievalConfig)
 		h.logger.Info("检索器配置已更新",
 			zap.Int("top_k", retrievalConfig.TopK),
 			zap.Float64("similarity_threshold", retrievalConfig.SimilarityThreshold),
-			zap.Float64("hybrid_weight", retrievalConfig.HybridWeight),
 		)
 	}
 
@@ -1289,13 +1288,22 @@ func updateKnowledgeConfig(doc *yaml.Node, cfg config.KnowledgeConfig) {
 	retrievalNode := ensureMap(knowledgeNode, "retrieval")
 	setIntInMap(retrievalNode, "top_k", cfg.Retrieval.TopK)
 	setFloatInMap(retrievalNode, "similarity_threshold", cfg.Retrieval.SimilarityThreshold)
-	setFloatInMap(retrievalNode, "hybrid_weight", cfg.Retrieval.HybridWeight)
+	setStringInMap(retrievalNode, "sub_index_filter", cfg.Retrieval.SubIndexFilter)
+	postNode := ensureMap(retrievalNode, "post_retrieve")
+	setIntInMap(postNode, "prefetch_top_k", cfg.Retrieval.PostRetrieve.PrefetchTopK)
+	setIntInMap(postNode, "max_context_chars", cfg.Retrieval.PostRetrieve.MaxContextChars)
+	setIntInMap(postNode, "max_context_tokens", cfg.Retrieval.PostRetrieve.MaxContextTokens)
 
 	// 更新索引配置
 	indexingNode := ensureMap(knowledgeNode, "indexing")
+	setStringInMap(indexingNode, "chunk_strategy", cfg.Indexing.ChunkStrategy)
+	setIntInMap(indexingNode, "request_timeout_seconds", cfg.Indexing.RequestTimeoutSeconds)
 	setIntInMap(indexingNode, "chunk_size", cfg.Indexing.ChunkSize)
 	setIntInMap(indexingNode, "chunk_overlap", cfg.Indexing.ChunkOverlap)
 	setIntInMap(indexingNode, "max_chunks_per_item", cfg.Indexing.MaxChunksPerItem)
+	setBoolInMap(indexingNode, "prefer_source_file", cfg.Indexing.PreferSourceFile)
+	setIntInMap(indexingNode, "batch_size", cfg.Indexing.BatchSize)
+	setStringSliceInMap(indexingNode, "sub_indexes", cfg.Indexing.SubIndexes)
 	setIntInMap(indexingNode, "max_rpm", cfg.Indexing.MaxRPM)
 	setIntInMap(indexingNode, "rate_limit_delay_ms", cfg.Indexing.RateLimitDelayMs)
 	setIntInMap(indexingNode, "max_retries", cfg.Indexing.MaxRetries)
@@ -1397,6 +1405,21 @@ func setStringInMap(mapNode *yaml.Node, key, value string) {
 	valueNode.Value = value
 }
 
+func setStringSliceInMap(mapNode *yaml.Node, key string, values []string) {
+	_, valueNode := ensureKeyValue(mapNode, key)
+	valueNode.Kind = yaml.SequenceNode
+	valueNode.Tag = "!!seq"
+	valueNode.Style = 0
+	valueNode.Content = nil
+	for _, v := range values {
+		valueNode.Content = append(valueNode.Content, &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: v,
+		})
+	}
+}
+
 func setIntInMap(mapNode *yaml.Node, key string, value int) {
 	_, valueNode := ensureKeyValue(mapNode, key)
 	valueNode.Kind = yaml.ScalarNode
@@ -1450,7 +1473,7 @@ func setFloatInMap(mapNode *yaml.Node, key string, value float64) {
 	valueNode.Kind = yaml.ScalarNode
 	valueNode.Tag = "!!float"
 	valueNode.Style = 0
-	// 对于0.0到1.0之间的值（如hybrid_weight），使用%.1f确保0.0被明确序列化为"0.0"
+	// 对于0.0到1.0之间的值（如 similarity_threshold），使用%.1f确保0.0被明确序列化为"0.0"
 	// 对于其他值，使用%g自动选择最合适的格式
 	if value >= 0.0 && value <= 1.0 {
 		valueNode.Value = fmt.Sprintf("%.1f", value)

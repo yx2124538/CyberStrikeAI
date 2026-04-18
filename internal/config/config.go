@@ -754,16 +754,20 @@ func Default() *Config {
 			Retrieval: RetrievalConfig{
 				TopK:                5,
 				SimilarityThreshold: 0.65, // 降低阈值到 0.65，减少漏检
-				HybridWeight:        0.7,
 			},
 			Indexing: IndexingConfig{
-				ChunkSize:        768, // 增加到 768，更好的上下文保持
-				ChunkOverlap:     50,
-				MaxChunksPerItem: 20,  // 限制单个知识项最多 20 个块，避免消耗过多配额
-				MaxRPM:           100, // 默认 100 RPM，避免 429 错误
-				RateLimitDelayMs: 600, // 600ms 间隔，对应 100 RPM
-				MaxRetries:       3,
-				RetryDelayMs:     1000,
+				ChunkStrategy:            "markdown_then_recursive",
+				RequestTimeoutSeconds:    120,
+				ChunkSize:                768, // 增加到 768，更好的上下文保持
+				ChunkOverlap:             50,
+				MaxChunksPerItem:         20, // 限制单个知识项最多 20 个块，避免消耗过多配额
+				BatchSize:                64,
+				PreferSourceFile:         false,
+				MaxRPM:                   100, // 默认 100 RPM，避免 429 错误
+				RateLimitDelayMs:         600, // 600ms 间隔，对应 100 RPM
+				MaxRetries:               3,
+				RetryDelayMs:             1000,
+				SubIndexes:               nil,
 			},
 		},
 	}
@@ -780,10 +784,17 @@ type KnowledgeConfig struct {
 
 // IndexingConfig 索引构建配置（用于控制知识库索引构建时的行为）
 type IndexingConfig struct {
+	// ChunkStrategy: "markdown_then_recursive"（默认，Eino Markdown 标题切分后再递归切）或 "recursive"（仅递归切分）
+	ChunkStrategy string `yaml:"chunk_strategy,omitempty" json:"chunk_strategy,omitempty"`
+	// RequestTimeoutSeconds 嵌入 HTTP 客户端超时（秒），0 表示使用默认 120
+	RequestTimeoutSeconds int `yaml:"request_timeout_seconds,omitempty" json:"request_timeout_seconds,omitempty"`
 	// 分块配置
 	ChunkSize        int `yaml:"chunk_size,omitempty" json:"chunk_size,omitempty"`                   // 每个块的最大 token 数（估算），默认 512
 	ChunkOverlap     int `yaml:"chunk_overlap,omitempty" json:"chunk_overlap,omitempty"`             // 块之间的重叠 token 数，默认 50
 	MaxChunksPerItem int `yaml:"max_chunks_per_item,omitempty" json:"max_chunks_per_item,omitempty"` // 单个知识项的最大块数量，0 表示不限制
+
+	// PreferSourceFile 为 true 时优先用 Eino FileLoader 从 file_path 读原文再索引（与库内 content 不一致时以磁盘为准）
+	PreferSourceFile bool `yaml:"prefer_source_file,omitempty" json:"prefer_source_file,omitempty"`
 
 	// 速率限制配置（用于避免 API 速率限制）
 	RateLimitDelayMs int `yaml:"rate_limit_delay_ms,omitempty" json:"rate_limit_delay_ms,omitempty"` // 请求间隔时间（毫秒），0 表示不使用固定延迟
@@ -793,8 +804,10 @@ type IndexingConfig struct {
 	MaxRetries   int `yaml:"max_retries,omitempty" json:"max_retries,omitempty"`       // 最大重试次数，默认 3
 	RetryDelayMs int `yaml:"retry_delay_ms,omitempty" json:"retry_delay_ms,omitempty"` // 重试间隔（毫秒），默认 1000
 
-	// 批处理配置（用于批量嵌入，当前未使用，保留扩展）
-	BatchSize int `yaml:"batch_size,omitempty" json:"batch_size,omitempty"` // 批量处理大小，0 表示逐个处理
+	// BatchSize 嵌入批大小（SQLite 索引写入），0 表示默认 64
+	BatchSize int `yaml:"batch_size,omitempty" json:"batch_size,omitempty"`
+	// SubIndexes 传入 Eino indexer.WithSubIndexes（逻辑分区标记，随 Document 元数据传递）
+	SubIndexes []string `yaml:"sub_indexes,omitempty" json:"sub_indexes,omitempty"`
 }
 
 // EmbeddingConfig 嵌入配置
@@ -805,11 +818,24 @@ type EmbeddingConfig struct {
 	APIKey   string `yaml:"api_key" json:"api_key"`   // API Key（从OpenAI配置继承）
 }
 
+// PostRetrieveConfig 检索后处理：固定对正文做规范化去重（最佳实践）、上下文预算截断；PrefetchTopK 用于多取候选再收敛到 top_k。
+type PostRetrieveConfig struct {
+	// PrefetchTopK 向量检索阶段最多保留的候选数（余弦序），应 ≥ top_k，0 表示与 top_k 相同；上限见知识库包内常量。
+	PrefetchTopK int `yaml:"prefetch_top_k,omitempty" json:"prefetch_top_k,omitempty"`
+	// MaxContextChars 返回文档内容总 Unicode 字符数上限（整段 chunk，不截断半段）；0 表示不限制。
+	MaxContextChars int `yaml:"max_context_chars,omitempty" json:"max_context_chars,omitempty"`
+	// MaxContextTokens 返回文档内容总 token 上限（tiktoken，按嵌入模型名映射，失败则 cl100k_base）；0 表示不限制。
+	MaxContextTokens int `yaml:"max_context_tokens,omitempty" json:"max_context_tokens,omitempty"`
+}
+
 // RetrievalConfig 检索配置
 type RetrievalConfig struct {
 	TopK                int     `yaml:"top_k" json:"top_k"`                               // 检索Top-K
-	SimilarityThreshold float64 `yaml:"similarity_threshold" json:"similarity_threshold"` // 相似度阈值
-	HybridWeight        float64 `yaml:"hybrid_weight" json:"hybrid_weight"`               // 向量检索权重（0-1）
+	SimilarityThreshold float64 `yaml:"similarity_threshold" json:"similarity_threshold"` // 余弦相似度阈值
+	// SubIndexFilter 非空时仅保留 sub_indexes 含该标签（逗号分隔之一）的行；sub_indexes 为空的旧行仍返回。
+	SubIndexFilter string `yaml:"sub_index_filter,omitempty" json:"sub_index_filter,omitempty"`
+	// PostRetrieve 检索后处理（去重、预算截断）；重排通过代码注入 [knowledge.DocumentReranker]。
+	PostRetrieve PostRetrieveConfig `yaml:"post_retrieve,omitempty" json:"post_retrieve,omitempty"`
 }
 
 // RolesConfig 角色配置（已废弃，使用 map[string]RoleConfig 替代）

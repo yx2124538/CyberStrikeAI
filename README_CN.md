@@ -110,13 +110,13 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 - 📄 大结果分页、压缩与全文检索
 - 🔗 攻击链可视化、风险打分与步骤回放
 - 🔒 Web 登录保护、审计日志、SQLite 持久化
-- 📚 知识库功能：向量检索（与 Eino Retriever 语义一致），为 AI 提供安全专业知识
+- 📚 知识库（RAG）：向量嵌入与余弦相似度检索（与 Eino `retriever.Retriever` 语义一致），可选 **Eino Compose** 索引流水线及检索后处理（预算、重排等配置项）
 - 📁 对话分组管理：支持分组创建、置顶、重命名、删除等操作
 - 🛡️ 漏洞管理功能：完整的漏洞 CRUD 操作，支持严重程度分级、状态流转、按对话/严重程度/状态过滤，以及统计看板
 - 📋 批量任务管理：创建任务队列，批量添加任务，依次顺序执行，支持任务编辑与状态跟踪
 - 🎭 角色化测试：预设安全测试角色（渗透测试、CTF、Web 应用扫描等），支持自定义提示词和工具限制
-- 🧩 **多代理模式（Eino DeepAgent）**：可选编排——协调主代理通过 `task` 调度 Markdown 定义的子代理；主代理见 `agents/orchestrator.md` 或 front matter `kind: orchestrator`，子代理为 `agents/*.md`；开启 `multi_agent.enabled` 后聊天可切换单代理/多代理（详见 [多代理说明](docs/MULTI_AGENT_EINO.md)）
-- 🎯 Skills 技能系统：20+ 预设安全测试技能（SQL 注入、XSS、API 安全等），可附加到角色或由 AI 按需调用
+- 🧩 **多代理（CloudWeGo Eino）**：在 **单代理 ReAct**（`/api/agent-loop`）之外，**多代理**（`/api/multi-agent/stream`）提供 **`deep`**（协调主代理 + `task` 子代理）、**`plan_execute`**（规划 / 执行 / 重规划）、**`supervisor`**（主代理 `transfer` / `exit` 监督子代理）；由请求体 **`orchestration`** 选择。`agents/` 下分模式主代理：`orchestrator.md`（Deep）、`orchestrator-plan-execute.md`、`orchestrator-supervisor.md`，及适用的子代理 `*.md`（详见 [多代理说明](docs/MULTI_AGENT_EINO.md)）
+- 🎯 **Skills（面向 Eino 重构）**：技能包放在 **`skills_dir`**，遵循 **Agent Skills** 目录规范（`SKILL.md` + 可选文件）；**多代理** 下通过 Eino 官方 **`skill`** 工具 **渐进式披露**（按 name 加载）。**`multi_agent.eino_skills`** 控制是否启用、本机文件/Shell 工具、工具名覆盖；**`eino_middleware`** 可选 patch、tool_search、plantask、reduction、断点目录及 Deep 调参。20+ 领域示例仍可绑定角色
 - 📱 **机器人**：支持钉钉、飞书长连接，在手机端与 CyberStrikeAI 对话（配置与命令详见 [机器人使用说明](docs/robot.md)）
 - 🐚 **WebShell 管理**：添加与管理 WebShell 连接（兼容冰蝎/蚁剑等），通过虚拟终端执行命令、内置文件管理进行文件操作，并提供按连接维度保存历史的 AI 助手标签页；支持 PHP/ASP/ASPX/JSP 及自定义类型，可配置请求方法与命令参数。
 
@@ -226,7 +226,7 @@ go build -o cyberstrike-ai cmd/server/main.go
 
 ### 常用流程
 - **对话测试**：自然语言触发多步工具编排，SSE 实时输出。
-- **单代理 / 多代理**：配置 `multi_agent.enabled: true` 后，聊天界面可切换 **单代理**（原有 ReAct 循环）与 **多代理**（Eino DeepAgent + `task` 子代理）。多代理走 `/api/multi-agent/stream`，MCP 工具与单代理同源桥接。
+- **单代理 / 多代理**：`multi_agent.enabled: true` 后可在聊天中切换 **单代理**（原有 **ReAct**，`/api/agent-loop/stream`）与 **多代理**（`/api/multi-agent/stream`）。多代理在既有 **`deep`**（`task` 子代理）基础上，新增 **`plan_execute`**、**`supervisor`**，由 **`orchestration`** 指定。MCP 工具与单代理同源桥接。
 - **角色化测试**：从预设的安全测试角色（渗透测试、CTF、Web 应用扫描、API 安全测试等）中选择，自定义 AI 行为和可用工具。每个角色可应用自定义系统提示词，并可限制可用工具列表，实现聚焦的测试场景。
 - **工具监控**：查看任务队列、执行日志、大文件附件。
 - **会话历史**：所有对话与工具调用保存在 SQLite，可随时重放。
@@ -248,7 +248,7 @@ go build -o cyberstrike-ai cmd/server/main.go
 - **预设角色**：系统内置 12+ 个预设的安全测试角色（渗透测试、CTF、Web 应用扫描、API 安全测试、二进制分析、云安全审计等），位于 `roles/` 目录。
 - **自定义提示词**：每个角色可定义 `user_prompt`，会在用户消息前自动添加，引导 AI 采用特定的测试方法和关注重点。
 - **工具限制**：角色可指定 `tools` 列表，限制可用工具，实现聚焦的测试流程（如 CTF 角色限制为 CTF 专用工具）。
-- **Skills 集成**：角色可附加安全测试技能。技能 id 会作为提示写入系统提示词；**多代理（DeepAgent）** 会话中由 Eino ADK **`skill`** 工具按需加载包内正文与资源（单代理不含该工具链）。
+- **Skills 集成**：角色可附加安全测试技能，id 写入提示；**多代理** 下由 Eino **`skill`** 工具 **按需加载**（渐进式披露）。**`multi_agent.eino_skills`** 控制中间件与本机 read_file/glob/grep/write/edit/execute（**Deep / Supervisor** 主/子代理；**plan_execute** 执行器无独立 skill 中间件，见文档）。**单代理 ReAct** 当前不挂载该 Eino skill 链。
 - **轻松创建角色**：通过在 `roles/` 目录添加 YAML 文件即可创建自定义角色。每个角色定义 `name`、`description`、`user_prompt`、`icon`、`tools`、`skills`、`enabled` 字段。
 - **Web 界面集成**：在聊天界面通过下拉菜单选择角色。角色选择会影响 AI 行为和可用工具建议。
 
@@ -269,20 +269,24 @@ go build -o cyberstrike-ai cmd/server/main.go
    ```
 2. 重启服务或重新加载配置，角色会出现在角色选择下拉菜单中。
 
-### 多代理模式（Eino DeepAgent）
-- **能力说明**：基于 CloudWeGo **Eino** `adk/prebuilt/deep` 的可选路径：**协调主代理**通过内置 **`task`** 工具启动短时**子代理**，各子代理独立推理，工具集来自当前聊天所选角色（与单代理一致来源）。
-- **Markdown 定义**：在 `agents_dir`（默认 `agents/`，相对 `config.yaml` 所在目录）维护：
-  - **主代理**：固定文件名 `orchestrator.md`，或任意 `.md` 且在 front matter 写 `kind: orchestrator`（**同一目录仅允许一个**主代理）。配置 Deep 的 name/id、description 与可选完整系统提示（正文）；正文为空时依次使用 `multi_agent.orchestrator_instruction`、Eino 内置默认提示。
-  - **子代理**：其余 `*.md`（YAML front matter + 正文作 instruction），不参与主代理定义的文件才会进入 `task` 可选列表。
-- **界面管理**：**Agents → Agent 管理** 对 Markdown 增删改查；HTTP API 前缀 `/api/multi-agent/markdown-agents`。
-- **配置项**：`config.yaml` 中 `multi_agent`：`enabled`、`default_mode`（`single` | `multi`）、`robot_use_multi_agent`、`batch_use_multi_agent`、`max_iteration`、`orchestrator_instruction` 等；可选在 YAML 写 `sub_agents` 与目录合并（同 `id` 时以 Markdown 为准）。
-- **更多细节**：流式事件、机器人与批量任务、排障等见 **[docs/MULTI_AGENT_EINO.md](docs/MULTI_AGENT_EINO.md)**。
+### 多代理模式（Eino：Deep / Plan-Execute / Supervisor）
+- **能力说明**：与 **单代理 ReAct** 并存的可选路径，基于 CloudWeGo **Eino** `adk/prebuilt`：**`deep`** — 协调主代理 + **`task`** 子代理；**`plan_execute`** — 规划 / 执行 / 重规划闭环（不使用 YAML/Markdown 子代理列表）；**`supervisor`** — 主代理 **`transfer`** / **`exit`** 调度 Markdown 专家。客户端通过 **`orchestration`** 选 `deep` | `plan_execute` | `supervisor`（缺省 `deep`）。
+- **Markdown 定义**（`agents_dir`，默认 `agents/`）：
+  - **Deep 主代理**：`orchestrator.md` 或唯一 `kind: orchestrator` 的 `.md`；正文或 `multi_agent.orchestrator_instruction`，再回退 Eino 默认。
+  - **Plan-Execute 主代理**：固定 **`orchestrator-plan-execute.md`**（另可配 `orchestrator_instruction_plan_execute`）。
+  - **Supervisor 主代理**：固定 **`orchestrator-supervisor.md`**（另可配 `orchestrator_instruction_supervisor`）；至少需一名子代理。
+  - **子代理**（**deep** / **supervisor**）：其余 `*.md`；标成 orchestrator 的不会进入 `task` 列表。
+- **界面管理**：**Agents → Agent 管理**；API `/api/multi-agent/markdown-agents`。
+- **配置项**：`multi_agent`：`enabled`、`default_mode`、`robot_use_multi_agent`、`batch_use_multi_agent`、`max_iteration`、`plan_execute_loop_max_iterations`、各模式 orchestrator 指令字段、可选 YAML `sub_agents` 与目录合并（同 `id` → Markdown 优先）、**`eino_skills`**、**`eino_middleware`**。
+- **更多细节**：[docs/MULTI_AGENT_EINO.md](docs/MULTI_AGENT_EINO.md)（流式、机器人、批量、中间件差异）。
 
 ### Skills 技能系统（Agent Skills + Eino）
 - **目录规范**：与 [Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) 一致，**仅**需目录下的 **`SKILL.md`**：YAML 头只用官方的 **`name` 与 `description`**，正文为 Markdown。可选同目录其他文件（`FORMS.md`、`REFERENCE.md`、`scripts/*` 等）。**不使用 `SKILL.yaml`**（Claude / Eino 官方均无此文件）；章节、`scripts/` 列表、渐进式行为由运行时从正文与磁盘 **自动推导**。
-- **Eino**：技能包会被切成 `schema.Document`，供 `FilesystemSkillsRetriever`（`skills.AsEinoRetriever()`）在编排中使用。
+- **运行侧重构**：**`skills_dir`** 为技能包唯一根目录；**多代理** 通过 Eino 官方 **`skill`** 中间件做 **渐进式披露**（模型按 **name** 调用 `skill`，而非一次性注入全文）。由 **`multi_agent.eino_skills`** 控制：`disable`、`filesystem_tools`（本机读写与 Shell）、`skill_tool_name`。
+- **Eino / 知识流水线**：技能包可切分为 `schema.Document`，供 `FilesystemSkillsRetriever`（`skills.AsEinoRetriever()`）在 **compose** 图（如索引/编排）中使用。
 - **提示词**：角色绑定的技能 **id**（文件夹名）会作为推荐写入系统提示；正文默认不整包注入。
-- **HTTP 管理**：`/api/skills` 列表与 `depth=summary|full`、`section`、`resource_path` 等查询仍用于 Web 与运维；**模型侧**加载技能走多代理内置 **`skill`** 工具，而非 MCP。
+- **HTTP 管理**：`/api/skills` 列表与 `depth=summary|full`、`section`、`resource_path` 等仍用于 Web 与运维；**模型侧** 多代理走 **`skill`** 工具，而非 MCP。
+- **可选 `eino_middleware`**：如 `tool_search`（动态工具列表）、`patch_tool_calls`、`plantask`（结构化任务；默认落在 `skills_dir` 下子目录）、`reduction`、`checkpoint_dir`、Deep 输出键 / 模型重试 / task 描述前缀等，见 `config.yaml` 与 `internal/config/config.go`。
 - **自带示例**：`skills/cyberstrike-eino-demo/`；说明见 `skills/README.md`。
 
 **新建技能：**
@@ -520,7 +524,10 @@ multi_agent:
   default_mode: "single"   # single | multi（开启多代理时的界面默认模式）
   robot_use_multi_agent: false
   batch_use_multi_agent: false
-  orchestrator_instruction: ""  # 可选；orchestrator.md 正文为空时使用
+  orchestrator_instruction: ""  # Deep；orchestrator.md 正文为空时使用
+  # orchestrator_instruction_plan_execute / orchestrator_instruction_supervisor 可选
+  # eino_skills: { disable: false, filesystem_tools: true, skill_tool_name: skill }
+  # eino_middleware: 可选 patch_tool_calls、tool_search、plantask、reduction、checkpoint_dir 等
 ```
 
 ### 工具模版示例（`tools/nmap.yaml`）
@@ -565,7 +572,7 @@ enabled: true
 
 ## 相关文档
 
-- [多代理模式（Eino）](docs/MULTI_AGENT_EINO.md)：DeepAgent 编排、`agents/*.md`、接口与流式说明。
+- [多代理模式（Eino）](docs/MULTI_AGENT_EINO.md)：**Deep**、**Plan-Execute**、**Supervisor**、`agents/*.md`、`eino_skills` / `eino_middleware`、接口与流式说明。
 - [机器人使用说明（钉钉 / 飞书）](docs/robot.md)：在手机端通过钉钉、飞书与 CyberStrikeAI 对话的完整配置步骤、命令与排查说明，**建议按该文档操作以避免走弯路**。
 
 ## 项目结构

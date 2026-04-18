@@ -2114,7 +2114,7 @@
     <!-- 知识项编辑模态框 -->
     <!-- Skill模态框 -->
     <div id="skill-modal" class="modal">
-        <div class="modal-content" style="max-width: 900px;">
+        <div class="modal-content" style="max-width: 1100px;">
             <div class="modal-header">
                 <h2 id="skill-modal-title" data-i18n="skillModal.addSkill">添加Skill</h2>
                 <span class="modal-close" onclick="closeSkillModal()">&times;</span>
@@ -2123,23 +2123,35 @@
                 <div class="form-group">
                     <label for="skill-name"><span data-i18n="skillModal.skillName">Skill名称</span> <span style="color: red;">*</span></label>
                     <input type="text" id="skill-name" data-i18n="skillModal.skillNamePlaceholder" data-i18n-attr="placeholder" placeholder="例如: sql-injection-testing" required />
-                    <small class="form-hint" data-i18n="skillModal.skillNameHint">只能包含字母、数字、连字符和下划线</small>
+                    <small class="form-hint" data-i18n="skillModal.skillNameHint">小写字母、数字、连字符（与 Agent Skills 的 name 一致）</small>
                 </div>
                 <div class="form-group">
-                    <label for="skill-description" data-i18n="skillModal.description">描述</label>
-                    <input type="text" id="skill-description" data-i18n="skillModal.descriptionPlaceholder" data-i18n-attr="placeholder" placeholder="Skill的简短描述" />
+                    <label for="skill-description"><span data-i18n="skillModal.description">描述</span> <span style="color: red;">*</span></label>
+                    <input type="text" id="skill-description" data-i18n="skillModal.descriptionPlaceholder" data-i18n-attr="placeholder" placeholder="Skill的简短描述" required />
+                    <small class="form-hint" data-i18n="skillModal.descriptionHint">写入 SKILL.md 的 YAML front matter（description 字段）</small>
                 </div>
-                <div class="form-group">
-                    <label for="skill-content"><span data-i18n="skillModal.contentLabel">内容（Markdown格式）</span> <span style="color: red;">*</span></label>
-                    <textarea id="skill-content" rows="20" data-i18n="skillModal.contentPlaceholder" data-i18n-attr="placeholder" placeholder="输入skill内容，支持Markdown格式..." style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.5;" required></textarea>
-                    <small class="form-hint"><span data-i18n="skillModal.contentHint">支持YAML front matter格式（可选），例如：</span><br>
----<br>
-name: skill-name<br>
-description: Skill描述<br>
-version: 1.0.0<br>
----<br><br>
-# Skill标题<br>
-这里是skill内容...</small>
+                <div class="form-group" id="skill-package-editor" style="display: none;">
+                    <label data-i18n="skillModal.packageFiles">包内文件（标准 Agent Skills 布局）</label>
+                    <div style="display: flex; gap: 12px; align-items: flex-start; min-height: 300px;">
+                        <div id="skill-package-tree" style="flex: 0 0 240px; max-height: 440px; overflow: auto; border: 1px solid rgba(127,127,127,0.25); border-radius: 6px; padding: 8px; font-size: 13px; line-height: 1.4;"></div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="margin-bottom: 8px; font-size: 13px;">
+                                <span data-i18n="skillModal.editingFile">正在编辑</span> <code id="skill-active-path">SKILL.md</code>
+                            </div>
+                            <div id="skill-new-file-row" style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+                                <input type="text" id="skill-new-file-path" data-i18n="skillModal.newFilePlaceholder" data-i18n-attr="placeholder" placeholder="新文件路径，如 FORMS.md" style="flex: 1;" />
+                                <button type="button" class="btn-secondary btn-small" id="skill-new-file-btn" data-i18n="skillModal.newFile">新建文件</button>
+                            </div>
+                            <label for="skill-content"><span data-i18n="skillModal.contentLabel">内容</span> <span style="color: red;">*</span></label>
+                            <textarea id="skill-content" rows="18" data-i18n="skillModal.contentPlaceholder" data-i18n-attr="placeholder" placeholder="输入skill内容，支持Markdown格式..." style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.5; width: 100%; box-sizing: border-box;" required></textarea>
+                            <small class="form-hint" id="skill-body-hint-edit" data-i18n="skillModal.bodyHintEdit" style="display: none;">选择 SKILL.md 时，此处为正文（不含 YAML 头）；保存时与上方描述一并写回标准 SKILL.md。</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group" id="skill-add-editor">
+                    <label for="skill-content-add"><span data-i18n="skillModal.contentLabel">正文（Markdown）</span> <span style="color: red;">*</span></label>
+                    <textarea id="skill-content-add" rows="18" data-i18n="skillModal.contentPlaceholderAdd" data-i18n-attr="placeholder" placeholder="SKILL.md 正文（无需手写 front matter，由名称与描述自动生成）..." style="font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.875rem; line-height: 1.5; width: 100%; box-sizing: border-box;" required></textarea>
+                    <small class="form-hint" data-i18n="skillModal.contentHintAdd">创建时只需填写正文；保存后生成标准 SKILL.md（含 YAML 头）。开源技能包可直接放入 skills/&lt;name&gt;/ 使用。</small>
                 </div>
             </div>
             <div class="modal-footer">

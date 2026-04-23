@@ -118,6 +118,7 @@ CyberStrikeAI 是一款 **AI 原生安全测试平台**，基于 Go 构建，集
 - 🧩 **多代理（CloudWeGo Eino）**：在 **单代理 ReAct**（`/api/agent-loop`）之外，**多代理**（`/api/multi-agent/stream`）提供 **`deep`**（协调主代理 + `task` 子代理）、**`plan_execute`**（规划 / 执行 / 重规划）、**`supervisor`**（主代理 `transfer` / `exit` 监督子代理）；由请求体 **`orchestration`** 选择。`agents/` 下分模式主代理：`orchestrator.md`（Deep）、`orchestrator-plan-execute.md`、`orchestrator-supervisor.md`，及适用的子代理 `*.md`（详见 [多代理说明](docs/MULTI_AGENT_EINO.md)）
 - 🎯 **Skills（面向 Eino 重构）**：技能包放在 **`skills_dir`**，遵循 **Agent Skills** 目录规范（`SKILL.md` + 可选文件）；**多代理** 下通过 Eino 官方 **`skill`** 工具 **渐进式披露**（按 name 加载）。**`multi_agent.eino_skills`** 控制是否启用、本机文件/Shell 工具、工具名覆盖；**`eino_middleware`** 可选 patch、tool_search、plantask、reduction、断点目录及 Deep 调参。20+ 领域示例仍可绑定角色
 - 📱 **机器人**：支持钉钉、飞书长连接，在手机端与 CyberStrikeAI 对话（配置与命令详见 [机器人使用说明](docs/robot.md)）
+- 🧑‍⚖️ **人机协同（HITL）**：对话页侧栏配置协同模式与免审批工具白名单；全局列表在 `config.yaml` 的 `hitl.tool_whitelist`；点「应用」可将新增工具合并写入配置文件且**无需重启**即可生效；导航 **人机协同** 页处理待审批工具调用
 - 🐚 **WebShell 管理**：添加与管理 WebShell 连接（兼容冰蝎/蚁剑等），通过虚拟终端执行命令、内置文件管理进行文件操作，并提供按连接维度保存历史的 AI 助手标签页；支持 PHP/ASP/ASPX/JSP 及自定义类型，可配置请求方法与命令参数。
 
 ## 插件（Plugins）
@@ -235,6 +236,7 @@ go build -o cyberstrike-ai cmd/server/main.go
 - **批量任务管理**：创建任务队列，批量添加多个任务，执行前可编辑或删除任务，然后依次顺序执行。每个任务会作为独立对话执行，支持完整的状态跟踪（待执行/执行中/已完成/失败/已取消）和执行历史。
 - **WebShell 管理**：添加并管理 WebShell 连接（PHP/ASP/ASPX/JSP 或自定义类型）。使用虚拟终端执行命令（带命令历史与快捷命令），使用文件管理浏览、读取、编辑、上传与删除目标文件，并支持按路径导航和名称过滤。连接信息持久化存储于 SQLite，支持 GET/POST 及可配置命令参数（兼容冰蝎/蚁剑等）。
 - **可视化配置**：在界面中切换模型、启停工具、设置迭代次数等。
+- **人机协同（HITL）**：侧栏设置协同模式与免审批工具（逗号或换行）；全局白名单见 `config.yaml` 的 `hitl.tool_whitelist`。点「**应用**」可写浏览器/服务端并合并新增工具进配置（**无需重启**）。**新对话**保留侧栏选择；导航 **人机协同** 处理待审批。从侧栏删掉工具不会自动从配置文件移除全局项，需手改 `config.yaml`。
 
 ### 默认安全措施
 - 设置面板内置必填校验，防止漏配 API Key/Base URL/模型。

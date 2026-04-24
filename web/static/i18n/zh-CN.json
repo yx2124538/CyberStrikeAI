@@ -234,7 +234,7 @@
   },
   "hitl": {
     "pageTitle": "人机协同审批",
-    "pendingTitle": "待处理中断"
+    "pendingTitle": "待处理审批"
   },
   "progress": {
     "callingAI": "正在调用AI模型...",

@@ -234,7 +234,7 @@
   },
   "hitl": {
     "pageTitle": "HITL approvals",
-    "pendingTitle": "Pending interrupts"
+    "pendingTitle": "Pending approvals"
   },
   "progress": {
     "callingAI": "Calling AI model...",

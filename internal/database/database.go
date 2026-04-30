@@ -269,6 +269,8 @@ func (db *DB) initTables() error {
 		method TEXT NOT NULL DEFAULT 'post',
 		cmd_param TEXT NOT NULL DEFAULT '',
 		remark TEXT NOT NULL DEFAULT '',
+		encoding TEXT NOT NULL DEFAULT '',
+		os TEXT NOT NULL DEFAULT '',
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);`
 
@@ -399,6 +401,11 @@ func (db *DB) initTables() error {
 	}
 	if err := db.migrateVulnerabilitiesTable(); err != nil {
 		db.logger.Warn("迁移vulnerabilities表失败", zap.Error(err))
+		// 不返回错误，允许继续运行
+	}
+
+	if err := db.migrateWebshellConnectionsTable(); err != nil {
+		db.logger.Warn("迁移webshell_connections表失败", zap.Error(err))
 		// 不返回错误，允许继续运行
 	}
 
@@ -726,6 +733,37 @@ func (db *DB) migrateVulnerabilitiesTable() error {
 		if count == 0 {
 			if _, addErr := db.Exec(col.stmt); addErr != nil {
 				db.logger.Warn("添加vulnerabilities字段失败", zap.String("field", col.name), zap.Error(addErr))
+			}
+		}
+	}
+	return nil
+}
+
+// migrateWebshellConnectionsTable 迁移 webshell_connections 表，补充新字段
+func (db *DB) migrateWebshellConnectionsTable() error {
+	columns := []struct {
+		name string
+		stmt string
+	}{
+		{name: "encoding", stmt: "ALTER TABLE webshell_connections ADD COLUMN encoding TEXT NOT NULL DEFAULT ''"},
+		{name: "os", stmt: "ALTER TABLE webshell_connections ADD COLUMN os TEXT NOT NULL DEFAULT ''"},
+	}
+
+	for _, col := range columns {
+		var count int
+		err := db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('webshell_connections') WHERE name=?", col.name).Scan(&count)
+		if err != nil {
+			if _, addErr := db.Exec(col.stmt); addErr != nil {
+				errMsg := strings.ToLower(addErr.Error())
+				if !strings.Contains(errMsg, "duplicate column") && !strings.Contains(errMsg, "already exists") {
+					db.logger.Warn("添加webshell_connections字段失败", zap.String("field", col.name), zap.Error(addErr))
+				}
+			}
+			continue
+		}
+		if count == 0 {
+			if _, addErr := db.Exec(col.stmt); addErr != nil {
+				db.logger.Warn("添加webshell_connections字段失败", zap.String("field", col.name), zap.Error(addErr))
 			}
 		}
 	}

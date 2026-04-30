@@ -405,10 +405,13 @@ async function loadToolsList(page = 1, searchKeyword = '') {
     }
 }
 
+// 每行有两类复选框：行首「启用工具」与名称旁「常驻」；统计/全选只应针对行首启用复选框
+const TOOL_ENABLE_CHECKBOX_SELECTOR = '#tools-list .tool-item > input[type="checkbox"]';
+
 // 保存当前页的工具状态到全局映射
 function saveCurrentPageToolStates() {
     document.querySelectorAll('#tools-list .tool-item').forEach(item => {
-        const checkbox = item.querySelector('input[type="checkbox"]');
+        const checkbox = item.querySelector(':scope > input[type="checkbox"]');
         const toolKey = item.dataset.toolKey; // 使用唯一标识符
         const toolName = item.dataset.toolName;
         const isExternal = item.dataset.isExternal === 'true';
@@ -745,7 +748,7 @@ function handleToolAlwaysVisibleChange(toolName, alwaysVisible) {
 
 // 全选工具
 function selectAllTools() {
-    document.querySelectorAll('#tools-list input[type="checkbox"]').forEach(checkbox => {
+    document.querySelectorAll(TOOL_ENABLE_CHECKBOX_SELECTOR).forEach(checkbox => {
         checkbox.checked = true;
         // 更新全局状态映射
         const toolItem = checkbox.closest('.tool-item');
@@ -769,7 +772,7 @@ function selectAllTools() {
 
 // 全不选工具
 function deselectAllTools() {
-    document.querySelectorAll('#tools-list input[type="checkbox"]').forEach(checkbox => {
+    document.querySelectorAll(TOOL_ENABLE_CHECKBOX_SELECTOR).forEach(checkbox => {
         checkbox.checked = false;
         // 更新全局状态映射
         const toolItem = checkbox.closest('.tool-item');
@@ -826,9 +829,9 @@ async function updateToolsStats() {
     // 先保存当前页的状态到全局映射
     saveCurrentPageToolStates();
     
-    // 计算当前页的启用工具数
-    const currentPageEnabled = Array.from(document.querySelectorAll('#tools-list input[type="checkbox"]:checked')).length;
-    const currentPageTotal = document.querySelectorAll('#tools-list input[type="checkbox"]').length;
+    // 计算当前页的启用工具数（仅行首「启用」复选框，不含「常驻」）
+    const currentPageEnabled = Array.from(document.querySelectorAll(`${TOOL_ENABLE_CHECKBOX_SELECTOR}:checked`)).length;
+    const currentPageTotal = document.querySelectorAll(TOOL_ENABLE_CHECKBOX_SELECTOR).length;
     
     // 计算所有工具的启用数
     let totalEnabled = 0;

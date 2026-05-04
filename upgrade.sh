@@ -7,11 +7,11 @@ set -euo pipefail
 # - config.yaml
 # - data/
 # - venv/ (disabled with --no-venv)
+# - tools/ (user extensions; never overwritten by upgrade)
 #
 # Optional preserves (may overwrite upstream updates):
 # - roles/
 # - skills/
-# - tools/
 # Enable with --preserve-custom
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,8 +43,8 @@ Usage:
 Options:
   --tag <tag>          Specify GitHub Release tag (e.g. v1.3.28).
                         If omitted, the script uses the latest release.
-  --preserve-custom    Preserve roles/skills/tools (may overwrite upstream files).
-                        Use with caution.
+  --preserve-custom    Preserve roles/skills (may overwrite upstream files).
+                        tools/ is always preserved. Use with caution.
   --no-venv             Do not preserve venv/ (Python deps will be re-installed).
   --no-stop             Do not try to stop the running service.
   --force-stop         If no process matching current directory is found, also stop
@@ -52,7 +52,7 @@ Options:
   --yes                 Do not ask for confirmation.
 
 Description:
-  The script backs up config.yaml/data/ (and optionally venv/roles/skills/tools) to
+  The script backs up config.yaml/data/tools/ (and optionally venv/roles/skills) to
   .upgrade-backup/
 EOF
 }
@@ -176,10 +176,11 @@ confirm_or_exit() {
   else
     info " - Preserve venv/: no (will remove old venv and re-install deps)"
   fi
+  info " - Preserve tools/: yes (always)"
   if [[ "$PRESERVE_CUSTOM" -eq 1 ]]; then
-    info " - Preserve roles/skills/tools: yes (may overwrite upstream updates)"
+    info " - Preserve roles/skills: yes (may overwrite upstream updates)"
   else
-    info " - Preserve roles/skills/tools: no (will use upstream versions)"
+    info " - Preserve roles/skills: no (will use upstream versions)"
   fi
   info " - Stop service: ${STOP_SERVICE}"
   echo ""
@@ -296,10 +297,12 @@ sync_code() {
     rsync_excludes+=( "--exclude=knowledge_base/" )
   fi
 
+  # User tool extensions: never replace or delete during upgrade.
+  rsync_excludes+=( "--exclude=tools/" )
+
   if [[ "$PRESERVE_CUSTOM" -eq 1 ]]; then
     rsync_excludes+=( "--exclude=roles/" )
     rsync_excludes+=( "--exclude=skills/" )
-    rsync_excludes+=( "--exclude=tools/" )
   fi
 
   # Ensure this upgrade script itself is not deleted.
@@ -378,10 +381,12 @@ main() {
   if [[ -d "$KNOWLEDGE_BASE_DIR" ]]; then
     backup_dir_tgz "knowledge_base" "$KNOWLEDGE_BASE_DIR"
   fi
+  if [[ -d "$ROOT_DIR/tools" ]]; then
+    backup_dir_tgz "tools" "$ROOT_DIR/tools"
+  fi
   if [[ "$PRESERVE_CUSTOM" -eq 1 ]]; then
     backup_dir_tgz "roles" "$ROOT_DIR/roles"
     backup_dir_tgz "skills" "$ROOT_DIR/skills"
-    backup_dir_tgz "tools" "$ROOT_DIR/tools"
   fi
 
   local tmp_dir

@@ -63,7 +63,7 @@ agent:
   max_iterations: 120 # 最大迭代次数，AI 代理最多执行多少轮工具调用
   large_result_threshold: 102400 # 大结果阈值（字节），默认50KB，超过此大小会自动保存到存储
   result_storage_dir: tmp # 结果存储目录，大结果会保存在此目录下
-  tool_timeout_minutes: 30 # 单次工具执行最大时长（分钟），超时自动终止；0 表示不限制（不推荐，易出现长时间挂起）
+  tool_timeout_minutes: 60 # 单次工具执行最大时长（分钟），超时自动终止；0 表示不限制（不推荐，易出现长时间挂起）
   # system_prompt_path: prompts/single-react.md # 可选：单代理系统提示文件（相对本配置文件所在目录）；非空且可读时替换内置提示
 # 人机协同（HITL）全局白名单：此处列出的工具始终免审批，与对话页「白名单工具（免审批，逗号分隔）」合并为并集；侧栏「应用」可合并写入本列表并立即生效。
 hitl:

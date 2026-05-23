@@ -597,6 +597,13 @@ func chatToolCallsToSchema(tcs []agent.ToolCall) []schema.ToolCall {
 				argsStr = string(b)
 			}
 		}
+		// Some OpenAI-compatible gateways require `function.arguments` to exist
+		// on every assistant tool_call message. When args are empty, omitempty may
+		// drop the field during serialization and cause "missing field arguments"
+		// on the next turn history replay.
+		if strings.TrimSpace(argsStr) == "" {
+			argsStr = "{}"
+		}
 		typ := tc.Type
 		if typ == "" {
 			typ = "function"

@@ -234,7 +234,7 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 			_ = h.db.UpdateConversationTitle(convID, newTitle)
 		}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), h.robotMessageTimeout())
 	sk := h.sessionKey(platform, userID)
 	h.cancelMu.Lock()
 	h.runningCancels[sk] = cancel
@@ -252,12 +252,20 @@ func (h *RobotHandler) HandleMessage(platform, userID, text string) (reply strin
 		if errors.Is(err, context.Canceled) {
 			return "任务已取消。"
 		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return "任务执行超时，请稍后重试或精简本次请求范围。"
+		}
 		return "处理失败: " + err.Error()
 	}
 	if newConvID != convID {
 		h.setConversation(platform, userID, newConvID)
 	}
 	return resp
+}
+
+func (h *RobotHandler) robotMessageTimeout() time.Duration {
+	// 机器人整次消息处理超时（与单次工具超时 agent.tool_timeout_minutes 解耦）。
+	return 10 * time.Hour
 }
 
 func (h *RobotHandler) cmdHelp() string {

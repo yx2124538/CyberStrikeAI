@@ -830,6 +830,10 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 	seenToolCallSigs := make(map[string]string)      // toolCallId -> payload signature
 	seenToolResultSigs := make(map[string]string)    // toolCallId -> payload signature
 
+	// progressMu 保护闭包内 map 与聚合状态。Eino parallelRunToolCall 会在多 goroutine 中并发回调
+	// progress（ToolInvokeNotifyHolder.Fire → createProgressCallback），未加锁的 map 会触发 fatal panic。
+	var progressMu sync.Mutex
+
 	// response_start + response_delta：前端时间线显示为「📝 规划中」（monitor.js），不落逐条 delta；
 	// 聚合为一条 planning 写入 process_details，刷新后与线上一致。
 	var respPlan responsePlanAgg
@@ -891,6 +895,9 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 	}
 
 	return func(eventType, message string, data interface{}) {
+		progressMu.Lock()
+		defer progressMu.Unlock()
+
 		// 上游在重试/补偿时可能重复回调相同 tool_call/tool_result。
 		// 这里做幂等过滤，保证前端展示和 process_details 都以唯一事件为准。
 		if (eventType == "tool_call" || eventType == "tool_result") && data != nil {

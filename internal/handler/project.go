@@ -61,6 +61,27 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	c.JSON(http.StatusOK, created)
 }
 
+// GetDashboardSummary GET /api/projects/dashboard-summary
+func (h *ProjectHandler) GetDashboardSummary(c *gin.Context) {
+	limit, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("fact_limit", "5")))
+	if limit <= 0 {
+		limit = 5
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	summary, err := h.db.GetProjectDashboardSummary(limit)
+	if err != nil {
+		h.logger.Error("获取项目仪表盘摘要失败", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if summary.RecentFacts == nil {
+		summary.RecentFacts = []database.ProjectDashboardFact{}
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
 // ListProjects GET /api/projects
 func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	status := c.Query("status")

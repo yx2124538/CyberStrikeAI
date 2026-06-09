@@ -314,7 +314,7 @@ func (h *RobotHandler) resolveProjectByIDOrName(idOrName string) (*database.Proj
 	if p, err := h.db.GetProject(idOrName); err == nil {
 		return p, ""
 	}
-	list, err := h.db.ListProjects("", 200, 0)
+	list, err := h.db.ListProjects("", "", 200, 0)
 	if err != nil {
 		return nil, "查询项目失败: " + err.Error()
 	}
@@ -353,7 +353,7 @@ func (h *RobotHandler) cmdProjects() string {
 	if !h.projectsEnabled() {
 		return "项目功能未启用（config.project.enabled）。"
 	}
-	list, err := h.db.ListProjects("", 50, 0)
+	list, err := h.db.ListProjects("", "", 50, 0)
 	if err != nil {
 		return "获取项目列表失败: " + err.Error()
 	}

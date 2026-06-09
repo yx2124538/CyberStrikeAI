@@ -85,9 +85,16 @@ func (h *ProjectHandler) GetDashboardSummary(c *gin.Context) {
 // ListProjects GET /api/projects
 func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	status := c.Query("status")
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "200"))
+	search := c.Query("search")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, _ := strconv.Atoi(c.Query("offset"))
-	list, err := h.db.ListProjects(status, limit, offset)
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	list, err := h.db.ListProjects(status, search, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -95,7 +102,17 @@ func (h *ProjectHandler) ListProjects(c *gin.Context) {
 	if list == nil {
 		list = []*database.Project{}
 	}
-	c.JSON(http.StatusOK, list)
+	total, err := h.db.CountProjects(status, search)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"projects": list,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+	})
 }
 
 // GetProjectStats GET /api/projects/:id/stats

@@ -117,6 +117,7 @@ func RunEinoSingleChatModelAgent(
 		},
 	}
 	httpClient = openai.NewEinoHTTPClient(&appCfg.OpenAI, httpClient)
+	openai.AttachSummarizationDiagTransport(httpClient, logger)
 
 	baseModelCfg := &einoopenai.ChatModelConfig{
 		APIKey:     appCfg.OpenAI.APIKey,

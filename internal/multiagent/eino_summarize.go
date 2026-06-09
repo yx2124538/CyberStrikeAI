@@ -9,14 +9,18 @@ import (
 
 	"cyberstrike-ai/internal/agent"
 	"cyberstrike-ai/internal/config"
+	copenai "cyberstrike-ai/internal/openai"
 
 	"github.com/bytedance/sonic"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/summarization"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
 	"go.uber.org/zap"
 )
+
+const defaultSummarizationRetryMax = 3
 
 // einoSummarizeUserInstruction：压缩历史时保留渗透测试关键信息。
 const einoSummarizeUserInstruction = `在保持所有关键安全测试信息完整的前提下压缩对话历史。
@@ -89,8 +93,32 @@ func newEinoSummarizationMiddleware(
 		}
 	}
 
+	retryMax := defaultSummarizationRetryMax
+	if mwCfg != nil && mwCfg.SummarizationRetryMaxAttempts > 0 {
+		retryMax = mwCfg.SummarizationRetryMaxAttempts
+	}
+
+	// ModelOptions apply only to summarization Generate (same ChatModel instance as the agent).
+	// Strip thinking/reasoning on this call path; mark requests for empty-choices diagnostics.
+	summaryModelOpts := []model.Option{
+		einoopenai.WithExtraHeader(map[string]string{
+			copenai.SummarizationRequestHeader: "1",
+		}),
+		einoopenai.WithRequestPayloadModifier(func(_ context.Context, in []*schema.Message, rawBody []byte) ([]byte, error) {
+			if logger != nil {
+				logger.Info("eino summarization generate request",
+					zap.Int("input_messages", len(in)),
+					zap.Int("payload_bytes", len(rawBody)),
+					zap.String("model", modelName),
+				)
+			}
+			return stripReasoningFromSummarizationPayload(rawBody)
+		}),
+	}
+
 	mw, err := summarization.New(ctx, &summarization.Config{
-		Model: summaryModel,
+		Model:        summaryModel,
+		ModelOptions: summaryModelOpts,
 		Trigger: &summarization.TriggerCondition{
 			ContextTokens: trigger,
 		},
@@ -101,6 +129,18 @@ func newEinoSummarizationMiddleware(
 		PreserveUserMessages: &summarization.PreserveUserMessages{
 			Enabled:   true,
 			MaxTokens: preserveMax,
+		},
+		Retry: &summarization.RetryConfig{
+			MaxRetries: &retryMax,
+			ShouldRetry: func(_ context.Context, _ adk.Message, err error) bool {
+				if err != nil && logger != nil {
+					logger.Warn("eino summarization generate attempt failed, will retry if attempts remain",
+						zap.Error(err),
+						zap.Int("max_retries", retryMax),
+					)
+				}
+				return err != nil
+			},
 		},
 		Finalize: func(ctx context.Context, originalMessages []adk.Message, summary adk.Message) ([]adk.Message, error) {
 			return summarizeFinalizeWithRecentAssistantToolTrail(ctx, originalMessages, summary, tokenCounter, recentTrailMax)

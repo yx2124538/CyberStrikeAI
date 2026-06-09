@@ -161,6 +161,7 @@ func RunDeepAgent(
 
 	// 若配置为 Claude provider，注入自动桥接 transport，对 Eino 透明走 Anthropic Messages API
 	httpClient = openai.NewEinoHTTPClient(&appCfg.OpenAI, httpClient)
+	openai.AttachSummarizationDiagTransport(httpClient, logger)
 
 	baseModelCfg := &einoopenai.ChatModelConfig{
 		APIKey:     appCfg.OpenAI.APIKey,

@@ -26,6 +26,10 @@
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.15);
+    --icon-close-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E");
+    --close-btn-color: #1d2129;
+    --close-btn-bg-hover: #f2f3f5;
+    --close-btn-bg-active: #e5e6eb;
 }
 
 body {
@@ -3381,28 +3385,79 @@ header {
     overflow-wrap: anywhere;
 }
 
-.modal-close {
-    width: 36px;
-    height: 36px;
-    display: flex;
+/* 统一关闭按钮：32×32 正方形容器 + 16px 居中图标；默认无背景，hover 显示 #f2f3f5 */
+.modal-close,
+.projects-modal-close,
+.role-selection-panel-close,
+.attack-chain-details-close,
+.c2-modal-close {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--close-btn-color);
+    cursor: pointer;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 10px;
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 1.5rem;
-    line-height: 1;
-    transition: all 0.25s ease;
-    border: 2px solid transparent;
-    background: transparent;
-    font-weight: 300;
+    flex-shrink: 0;
+    line-height: 0;
+    font-size: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+    appearance: none;
 }
 
-.modal-close:hover {
-    background: linear-gradient(135deg, rgba(220, 53, 69, 0.1) 0%, rgba(220, 53, 69, 0.05) 100%);
-    color: #dc3545;
-    border-color: rgba(220, 53, 69, 0.2);
-    transform: scale(1.1);
+.modal-close svg,
+.projects-modal-close svg,
+.role-selection-panel-close svg,
+.attack-chain-details-close svg,
+.c2-modal-close svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    flex-shrink: 0;
+}
+
+.modal-close:not(:has(svg))::before,
+.projects-modal-close:not(:has(svg))::before,
+.c2-modal-close:not(:has(svg))::before {
+    content: '';
+    display: block;
+    width: 16px;
+    height: 16px;
+    background-color: currentColor;
+    -webkit-mask-image: var(--icon-close-mask);
+    mask-image: var(--icon-close-mask);
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
+.modal-close:hover,
+.projects-modal-close:hover,
+.role-selection-panel-close:hover,
+.attack-chain-details-close:hover,
+.c2-modal-close:hover {
+    background: var(--close-btn-bg-hover);
+    color: var(--close-btn-color);
+}
+
+.modal-close:active,
+.projects-modal-close:active,
+.role-selection-panel-close:active,
+.attack-chain-details-close:active,
+.c2-modal-close:active {
+    background: var(--close-btn-bg-active);
+    color: var(--close-btn-color);
 }
 
 .modal-body {
@@ -4720,23 +4775,49 @@ header {
 
 .terminal-tab-close {
     padding: 0;
-    width: 18px;
-    height: 18px;
-    font-size: 1.1rem;
-    line-height: 1;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
+    font-size: 0;
+    line-height: 0;
     color: #8b949e;
     background: transparent;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+    appearance: none;
+}
+
+.terminal-tab-close::before {
+    content: '';
+    display: block;
+    width: 12px;
+    height: 12px;
+    background-color: currentColor;
+    -webkit-mask-image: var(--icon-close-mask);
+    mask-image: var(--icon-close-mask);
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
 }
 
 .terminal-tab-close:hover {
-    color: #ff7b72;
-    background: rgba(255, 123, 114, 0.15);
+    background: var(--close-btn-bg-hover);
+    color: var(--close-btn-color);
+}
+
+.terminal-tab-close:active {
+    background: var(--close-btn-bg-active);
+    color: var(--close-btn-color);
 }
 
 .terminal-tab:hover {
@@ -8789,30 +8870,6 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     flex: 1;
 }
 
-.attack-chain-details-close {
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    cursor: pointer;
-    color: #64748b;
-    border: 1px solid transparent;
-    background: rgba(15, 23, 42, 0.04);
-    transition: all 0.2s ease;
-    padding: 0;
-    flex-shrink: 0;
-    opacity: 0.75;
-}
-
-.attack-chain-details-close:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    opacity: 1;
-    transform: rotate(90deg);
-}
-
 .attack-chain-details-content {
     display: flex;
     flex-direction: column;
@@ -9022,27 +9079,7 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 }
 
 .modal-header-actions .modal-close {
-    width: 32px;
-    height: 32px;
-    border-radius: 10px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(15, 23, 42, 0.04);
-    color: #64748b;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 20px;
-    line-height: 1;
     user-select: none;
-    border: 1.5px solid transparent;
-}
-
-.modal-header-actions .modal-close:hover {
-    background: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.2);
-    transform: rotate(90deg);
 }
 
 .loading-spinner {
@@ -10575,19 +10612,6 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     margin: 0;
 }
 
-.create-group-modal-content .modal-close {
-    width: 28px;
-    height: 28px;
-    font-size: 1.1rem;
-    color: #666;
-}
-
-.create-group-modal-content .modal-close:hover {
-    background: #f5f5f5;
-    color: #333;
-    border-color: transparent;
-    transform: scale(1);
-}
 
 .create-group-modal-content .modal-footer {
     padding: 10px 20px;
@@ -13445,14 +13469,48 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     background: transparent;
     color: #8b949e;
     width: 20px;
-    height: 100%;
+    min-width: 20px;
+    height: 20px;
+    min-height: 20px;
+    padding: 0;
+    border-radius: 4px;
     cursor: pointer;
-    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 0;
+    line-height: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+    appearance: none;
 }
+
+.webshell-terminal-session-close::before {
+    content: '';
+    display: block;
+    width: 12px;
+    height: 12px;
+    background-color: currentColor;
+    -webkit-mask-image: var(--icon-close-mask);
+    mask-image: var(--icon-close-mask);
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+}
+
 .webshell-terminal-session-close:hover {
-    color: #f85149;
-    background: rgba(248, 81, 73, 0.08);
+    background: var(--close-btn-bg-hover);
+    color: var(--close-btn-color);
 }
+
+.webshell-terminal-session-close:active {
+    background: var(--close-btn-bg-active);
+    color: var(--close-btn-color);
+}
+
 .webshell-terminal-session-add {
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-bottom: none;
@@ -15671,25 +15729,43 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
 
 /* 告警条「× 忽略」按钮：低权重，hover 时才显形 */
 .dashboard-alert-close {
-    appearance: none;
-    background: transparent;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    margin: 0;
     border: none;
-    color: inherit;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--close-btn-color);
     opacity: 0.45;
     cursor: pointer;
-    width: 26px;
-    height: 26px;
-    border-radius: 6px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: opacity 0.15s, background 0.15s;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+    appearance: none;
+}
+
+.dashboard-alert-close svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    flex-shrink: 0;
 }
 
 .dashboard-alert-close:hover {
     opacity: 1;
-    background: rgba(0, 0, 0, 0.06);
+    background: var(--close-btn-bg-hover);
+    color: var(--close-btn-color);
+}
+
+.dashboard-alert-close:active {
+    background: var(--close-btn-bg-active);
+    color: var(--close-btn-color);
 }
 
 /* 「上次更新」过期状态：变灰 + ⚠️ 图标显形 */
@@ -19126,30 +19202,6 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     letter-spacing: -0.01em;
 }
 
-.role-selection-panel-close {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: none;
-    background: transparent;
-    border-radius: 8px;
-    cursor: pointer;
-    color: #666666;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    padding: 0;
-}
-
-.role-selection-panel-close:hover {
-    background: rgba(0, 0, 0, 0.06);
-    color: #1a1a1a;
-    transform: rotate(90deg);
-}
-
-.role-selection-panel-close:active {
-    transform: rotate(90deg) scale(0.95);
-}
 
 .role-selection-list-main {
     display: flex;
@@ -21523,20 +21575,6 @@ button.chat-files-dropdown-item:hover:not(:disabled) {
     display: none !important;
 }
 
-.chat-files-form-modal-close {
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 1.25rem !important;
-    border-radius: 8px !important;
-    border: none !important;
-}
-
-.chat-files-form-modal-close:hover {
-    background: var(--bg-secondary) !important;
-    color: var(--text-primary) !important;
-    transform: none !important;
-    border-color: transparent !important;
-}
 
 /* 新建文件夹弹窗：层次清晰、留白舒适，无强装饰 */
 .chat-files-mkdir-modal-content {
@@ -23569,26 +23607,6 @@ button.chat-files-dropdown-item:hover:not(:disabled) {
     color: #64748b;
     line-height: 1.45;
     font-weight: 400;
-}
-.projects-modal-close {
-    flex-shrink: 0;
-    width: 32px;
-    height: 32px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: #64748b;
-    font-size: 1.5rem;
-    line-height: 1;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-}
-.projects-modal-close:hover {
-    background: #f1f5f9;
-    color: #0f172a;
 }
 .projects-modal-body {
     padding: 20px 22px;

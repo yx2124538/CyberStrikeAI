@@ -2843,10 +2843,12 @@ async function startNewConversation() {
     } catch (e) { /* ignore */ }
     currentConversationGroupId = null; // 新对话不属于任何分组
     if (typeof ensureDefaultActiveProjectForNewChat === 'function') {
-        ensureDefaultActiveProjectForNewChat().catch(() => {});
+        try {
+            await ensureDefaultActiveProjectForNewChat();
+        } catch (e) { /* ignore */ }
     }
     if (typeof refreshChatProjectSelector === 'function') {
-        refreshChatProjectSelector();
+        await refreshChatProjectSelector();
     }
     document.getElementById('chat-messages').innerHTML = '';
     const readyMsgNew = typeof window.t === 'function' ? window.t('chat.systemReadyMessage') : '系统已就绪。请输入您的测试需求，系统将自动执行相应的安全测试。';

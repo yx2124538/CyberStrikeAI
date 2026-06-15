@@ -306,23 +306,9 @@ function prefetchProjectsForChat() {
     ensureProjectsLoaded().catch(() => {});
 }
 
-/** 新对话时：保留有效 activeProjectId，否则默认选中第一个进行中的项目 */
+/** 新对话时默认不绑定项目；用户需主动选择后才写入共享黑板 */
 async function ensureDefaultActiveProjectForNewChat() {
-    try {
-        await ensureProjectsLoaded();
-        const cur = getActiveProjectId();
-        if (cur && isActiveChatProjectId(cur)) return cur;
-        const source = projectsCacheAll.length ? projectsCacheAll : projectsCache;
-        const first =
-            source.find((p) => p.pinned && p.status !== 'archived') ||
-            source.find((p) => p.status !== 'archived');
-        if (first) {
-            setActiveProjectId(first.id);
-            return first.id;
-        }
-    } catch (e) {
-        console.warn(e);
-    }
+    setActiveProjectId('');
     return '';
 }
 
@@ -345,7 +331,9 @@ async function initProjectsPage() {
     const page = document.getElementById('page-projects');
     if (!page || page.style.display === 'none') return;
     initProjectsModalEscape();
-    syncProjectsModalBodyLock();
+    if (typeof syncAppModalBodyLock === 'function') {
+        syncAppModalBodyLock();
+    }
     updateProjectsDetailVisibility();
     projectsListPagination.pageSize = getProjectsListPageSize();
     renderProjectsPagination();

@@ -7468,8 +7468,11 @@ async function deleteSelectedConversations() {
         for (const id of ids) {
             await deleteConversation(id, true); // 跳过内部确认，因为批量删除时已经确认过了
         }
-        closeBatchManageModal();
-        loadConversationsWithGroups();
+        // 删除后保持弹窗打开，便于继续管理剩余对话
+        const selectAll = document.getElementById('batch-select-all');
+        if (selectAll) {
+            selectAll.checked = false;
+        }
     } catch (error) {
         console.error('删除失败:', error);
         const failedMsg = typeof window.t === 'function' ? window.t('batchManageModal.deleteFailed') : '删除失败';

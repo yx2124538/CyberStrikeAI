@@ -7226,16 +7226,15 @@ header {
 }
 
 .mcp-stats-timeline-dot {
-    fill: #fff;
-    stroke: #3b82f6;
-    stroke-width: 1.5;
+    fill: #3b82f6;
+    stroke: none;
     cursor: crosshair;
     opacity: 0;
-    transition: opacity 0.12s ease;
+    transition: opacity 0.12s ease, r 0.12s ease;
 }
 
 .mcp-stats-timeline-dot--peak {
-    opacity: 0.7;
+    opacity: 0.85;
 }
 
 .mcp-stats-timeline__chart-wrap:hover .mcp-stats-timeline-dot,
@@ -7244,9 +7243,7 @@ header {
 }
 
 .mcp-stats-timeline-dot.is-active {
-    fill: #2563eb;
-    stroke: #fff;
-    stroke-width: 2;
+    fill: #1d4ed8;
 }
 
 .mcp-stats-timeline-error {

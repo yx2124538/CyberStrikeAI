@@ -3887,7 +3887,7 @@ function buildMcpTimelineSvg(points, rangeKey) {
         const tipTime = formatMcpTimelineLabel(c.p.t, rangeKey, locale);
         const isPeak = c.i === peakIdx && (c.p.total || 0) > 0;
         const dotClass = 'mcp-stats-timeline-dot' + (isPeak ? ' mcp-stats-timeline-dot--peak' : '');
-        return `<circle class="${dotClass}" cx="${c.x.toFixed(2)}" cy="${c.y.toFixed(2)}" r="${isPeak ? 3 : 2.5}"
+        return `<circle class="${dotClass}" cx="${c.x.toFixed(2)}" cy="${c.y.toFixed(2)}" r="${isPeak ? 2 : 1.5}"
             data-time="${escapeHtml(tipTime)}"
             data-total="${c.p.total || 0}"
             data-failed="${c.p.failed || 0}" />`;
@@ -3895,7 +3895,7 @@ function buildMcpTimelineSvg(points, rangeKey) {
 
     const peakC = coords[peakIdx];
     const peakMarker = (peakC.p.total || 0) > 0
-        ? `<circle class="mcp-stats-timeline-peak-glow" cx="${peakC.x.toFixed(2)}" cy="${peakC.y.toFixed(2)}" r="7" />`
+        ? `<circle class="mcp-stats-timeline-peak-glow" cx="${peakC.x.toFixed(2)}" cy="${peakC.y.toFixed(2)}" r="5" />`
         : '';
 
     return `<svg class="mcp-stats-timeline__chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">

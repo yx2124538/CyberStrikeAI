@@ -352,8 +352,8 @@ func (db *DB) GetConversationLite(id string) (*Conversation, error) {
 
 	conv.Pinned = pinned != 0
 
-	// 加载消息（不加载 process_details）
-	messages, err := db.GetMessages(id)
+	// 加载消息（不加载 process_details / reasoning_content，减少历史会话切换 payload）
+	messages, err := db.GetMessagesLite(id)
 	if err != nil {
 		return nil, fmt.Errorf("加载消息失败: %w", err)
 	}
@@ -835,6 +835,62 @@ func (db *DB) GetMessages(conversationID string) ([]Message, error) {
 	return messages, nil
 }
 
+// GetMessagesLite 获取对话消息（不含 reasoning_content），用于历史会话快速切换。
+func (db *DB) GetMessagesLite(conversationID string) ([]Message, error) {
+	rows, err := db.Query(
+		"SELECT id, conversation_id, role, content, mcp_execution_ids, created_at, updated_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
+		conversationID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("查询消息失败: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var msg Message
+		var mcpIDsJSON sql.NullString
+		var createdAt string
+		var updatedAt sql.NullString
+
+		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &mcpIDsJSON, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("扫描消息失败: %w", err)
+		}
+
+		var err error
+		msg.CreatedAt, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", createdAt)
+		if err != nil {
+			msg.CreatedAt, err = time.Parse("2006-01-02 15:04:05", createdAt)
+		}
+		if err != nil {
+			msg.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		}
+
+		if updatedAt.Valid && strings.TrimSpace(updatedAt.String) != "" {
+			msg.UpdatedAt, err = time.Parse("2006-01-02 15:04:05.999999999-07:00", updatedAt.String)
+			if err != nil {
+				msg.UpdatedAt, err = time.Parse("2006-01-02 15:04:05", updatedAt.String)
+			}
+			if err != nil {
+				msg.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt.String)
+			}
+		}
+		if msg.UpdatedAt.IsZero() {
+			msg.UpdatedAt = msg.CreatedAt
+		}
+
+		if mcpIDsJSON.Valid && mcpIDsJSON.String != "" {
+			if err := json.Unmarshal([]byte(mcpIDsJSON.String), &msg.MCPExecutionIDs); err != nil {
+				db.logger.Warn("解析MCP执行ID失败", zap.Error(err))
+			}
+		}
+
+		messages = append(messages, msg)
+	}
+
+	return messages, nil
+}
+
 // turnSliceRange 根据任意一条消息 ID 定位「一轮对话」在 msgs 中的 [start, end) 下标区间（msgs 须已按时间升序，与 GetMessages 一致）。
 // 一轮 = 从某条 user 消息起，至下一条 user 之前（含中间所有 assistant）。
 func turnSliceRange(msgs []Message, anchorID string) (start, end int, err error) {
@@ -1001,6 +1057,107 @@ func (db *DB) GetProcessDetails(messageID string) ([]ProcessDetail, error) {
 	}
 
 	return details, nil
+}
+
+// ProcessDetailsSummary 过程详情摘要（用于折叠态展示，避免全量加载）。
+type ProcessDetailsSummary struct {
+	Total          int `json:"total"`
+	IterationCount int `json:"iterationCount"`
+	MaxIteration   int `json:"maxIteration"`
+}
+
+// GetProcessDetailsSummary 统计消息的过程详情数量与迭代轮次。
+func (db *DB) GetProcessDetailsSummary(messageID string) (*ProcessDetailsSummary, error) {
+	var total int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM process_details WHERE message_id = ?",
+		messageID,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("统计过程详情失败: %w", err)
+	}
+
+	summary := &ProcessDetailsSummary{Total: total}
+	if total == 0 {
+		return summary, nil
+	}
+
+	rows, err := db.Query(
+		"SELECT data FROM process_details WHERE message_id = ? AND event_type = 'iteration' ORDER BY created_at ASC, rowid ASC",
+		messageID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("查询迭代详情失败: %w", err)
+	}
+	defer rows.Close()
+
+	maxIter := 0
+	iterCount := 0
+	for rows.Next() {
+		var dataJSON string
+		if err := rows.Scan(&dataJSON); err != nil {
+			return nil, fmt.Errorf("扫描迭代详情失败: %w", err)
+		}
+		iterCount++
+		if dataJSON == "" {
+			continue
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(dataJSON), &payload); err != nil {
+			continue
+		}
+		if n, ok := payload["iteration"].(float64); ok && int(n) > maxIter {
+			maxIter = int(n)
+		}
+	}
+	summary.IterationCount = iterCount
+	summary.MaxIteration = maxIter
+	return summary, nil
+}
+
+// GetProcessDetailsPage 分页获取消息的过程详情（按时间升序）。
+func (db *DB) GetProcessDetailsPage(messageID string, limit, offset int) ([]ProcessDetail, int, error) {
+	var total int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM process_details WHERE message_id = ?",
+		messageID,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("统计过程详情失败: %w", err)
+	}
+	if total == 0 || offset >= total {
+		return nil, total, nil
+	}
+
+	rows, err := db.Query(
+		"SELECT id, message_id, conversation_id, event_type, message, data, created_at FROM process_details WHERE message_id = ? ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
+		messageID, limit, offset,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询过程详情失败: %w", err)
+	}
+	defer rows.Close()
+
+	var details []ProcessDetail
+	for rows.Next() {
+		var detail ProcessDetail
+		var createdAt string
+
+		if err := rows.Scan(&detail.ID, &detail.MessageID, &detail.ConversationID, &detail.EventType, &detail.Message, &detail.Data, &createdAt); err != nil {
+			return nil, 0, fmt.Errorf("扫描过程详情失败: %w", err)
+		}
+
+		var parseErr error
+		detail.CreatedAt, parseErr = time.Parse("2006-01-02 15:04:05.999999999-07:00", createdAt)
+		if parseErr != nil {
+			detail.CreatedAt, parseErr = time.Parse("2006-01-02 15:04:05", createdAt)
+		}
+		if parseErr != nil {
+			detail.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		}
+
+		details = append(details, detail)
+	}
+
+	return details, total, nil
 }
 
 // GetProcessDetailsByConversation 获取对话的所有过程详情（按消息分组）

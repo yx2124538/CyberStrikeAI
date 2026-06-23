@@ -176,10 +176,58 @@ func (h *ConversationHandler) GetConversation(c *gin.Context) {
 }
 
 // GetMessageProcessDetails 获取指定消息的过程详情（按需加载）
+// 查询参数：
+//   - summary=1：仅返回摘要（total / iterationCount / maxIteration）
+//   - limit + offset：分页返回 processDetails（未指定 limit 时保持全量兼容）
 func (h *ConversationHandler) GetMessageProcessDetails(c *gin.Context) {
 	messageID := c.Param("id")
 	if messageID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "message id required"})
+		return
+	}
+
+	summaryStr := strings.TrimSpace(c.Query("summary"))
+	if summaryStr == "1" || strings.EqualFold(summaryStr, "true") || strings.EqualFold(summaryStr, "yes") {
+		summary, err := h.db.GetProcessDetailsSummary(messageID)
+		if err != nil {
+			h.logger.Error("获取过程详情摘要失败", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"summary": summary})
+		return
+	}
+
+	limitStr := strings.TrimSpace(c.Query("limit"))
+	if limitStr != "" {
+		limit, err := strconv.Atoi(limitStr)
+		if err != nil || limit <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit"})
+			return
+		}
+		if limit > 500 {
+			limit = 500
+		}
+		offset, _ := strconv.Atoi(strings.TrimSpace(c.Query("offset")))
+		if offset < 0 {
+			offset = 0
+		}
+
+		details, total, err := h.db.GetProcessDetailsPage(messageID, limit, offset)
+		if err != nil {
+			h.logger.Error("分页获取过程详情失败", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		details = database.DedupeConsecutiveProcessDetails(details)
+		out := processDetailsToJSON(h.logger, details)
+		c.JSON(http.StatusOK, gin.H{
+			"processDetails": out,
+			"total":          total,
+			"offset":         offset,
+			"limit":          limit,
+			"hasMore":        offset+len(out) < total,
+		})
 		return
 	}
 
@@ -191,14 +239,17 @@ func (h *ConversationHandler) GetMessageProcessDetails(c *gin.Context) {
 	}
 
 	details = database.DedupeConsecutiveProcessDetails(details)
+	out := processDetailsToJSON(h.logger, details)
+	c.JSON(http.StatusOK, gin.H{"processDetails": out, "total": len(out)})
+}
 
-	// 转换为前端期望的 JSON 结构（与 GetConversation 中 processDetails 结构一致）
+func processDetailsToJSON(logger *zap.Logger, details []database.ProcessDetail) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(details))
 	for _, d := range details {
 		var data interface{}
 		if d.Data != "" {
 			if err := json.Unmarshal([]byte(d.Data), &data); err != nil {
-				h.logger.Warn("解析过程详情数据失败", zap.Error(err))
+				logger.Warn("解析过程详情数据失败", zap.Error(err))
 			}
 		}
 		out = append(out, map[string]interface{}{
@@ -211,8 +262,7 @@ func (h *ConversationHandler) GetMessageProcessDetails(c *gin.Context) {
 			"createdAt":      d.CreatedAt,
 		})
 	}
-
-	c.JSON(http.StatusOK, gin.H{"processDetails": out})
+	return out
 }
 
 // UpdateConversationRequest 更新对话请求

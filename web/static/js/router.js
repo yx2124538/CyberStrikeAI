@@ -356,6 +356,9 @@ async function initPage(pageId) {
             if (typeof refreshMonitorPanel === 'function') {
                 refreshMonitorPanel();
             }
+            if (typeof startMonitorPoll === 'function') {
+                startMonitorPoll();
+            }
             break;
         case 'mcp-management':
             // 初始化MCP管理

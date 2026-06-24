@@ -3110,15 +3110,26 @@ async function cancelMCPToolExecutionSubmit(executionId, userNote, options = {})
     if (!executionId) {
         return;
     }
+    let conversationId = '';
+    if (typeof monitorState !== 'undefined' && Array.isArray(monitorState.executions)) {
+        const exec = monitorState.executions.find(e => e && e.id === executionId);
+        if (exec) {
+            conversationId = (exec.conversationId || '').trim();
+        }
+    }
     try {
-        const res = await apiFetch(`/api/monitor/execution/${encodeURIComponent(executionId)}/cancel`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ note: userNote || '' }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-            throw new Error(body.error || body.message || res.statusText);
+        if (conversationId && typeof requestCancelWithContinue === 'function') {
+            await requestCancelWithContinue(conversationId, userNote || '');
+        } else {
+            const res = await apiFetch(`/api/monitor/execution/${encodeURIComponent(executionId)}/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: userNote || '' }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(body.error || body.message || res.statusText);
+            }
         }
         const okMsg = typeof window.t === 'function' ? window.t('mcpDetailModal.abortSuccess') : '已发送终止请求';
         alert(okMsg);
@@ -3136,12 +3147,24 @@ async function cancelMCPToolExecutionSubmit(executionId, userNote, options = {})
 }
 
 /**
- * 取消单次 MCP 工具执行（监控页「终止」）。弹出说明框后提交；仅取消该次 tools/call，不停止整条对话/迭代任务。
+ * 取消单次 MCP 工具执行（监控页「终止」）。有 conversationId 时复用对话页「中断并继续」弹窗与 API。
  * @param {string} executionId
  * @param {{ refreshDetail?: boolean }} [options]
  */
 async function cancelMCPToolExecution(executionId, options = {}) {
     if (!executionId) {
+        return;
+    }
+    let conversationId = '';
+    if (typeof monitorState !== 'undefined' && Array.isArray(monitorState.executions)) {
+        const exec = monitorState.executions.find(e => e && e.id === executionId);
+        if (exec) {
+            conversationId = (exec.conversationId || '').trim();
+        }
+    }
+    if (conversationId && typeof openUserInterruptModal === 'function') {
+        openUserInterruptModal(null, conversationId);
+        window.__monitorInterruptContext = { executionId: executionId, options: options || {} };
         return;
     }
     openMcpToolAbortModal(executionId, options);

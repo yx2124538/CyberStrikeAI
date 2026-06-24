@@ -1003,6 +1003,7 @@ function openUserInterruptModal(progressId, conversationId) {
 
 function closeUserInterruptModal() {
     userInterruptModalPending = null;
+    window.__monitorInterruptContext = null;
     closeAppModal('user-interrupt-modal');
 }
 
@@ -1012,6 +1013,7 @@ async function submitUserInterruptContinue() {
     }
     const reason = (document.getElementById('user-interrupt-reason') && document.getElementById('user-interrupt-reason').value || '').trim();
     const { progressId, conversationId } = userInterruptModalPending;
+    const monitorCtx = window.__monitorInterruptContext;
     closeUserInterruptModal();
     const stopBtn = progressId ? document.getElementById(`${progressId}-stop-btn`) : null;
     try {
@@ -1020,6 +1022,13 @@ async function submitUserInterruptContinue() {
             stopBtn.textContent = typeof window.t === 'function' ? window.t('tasks.interruptSubmitting') : '提交中...';
         }
         await requestCancelWithContinue(conversationId, reason);
+        if (monitorCtx && monitorCtx.executionId && typeof refreshMonitorPanel === 'function') {
+            const page = (typeof monitorState !== 'undefined' && monitorState.pagination && monitorState.pagination.page)
+                ? monitorState.pagination.page
+                : 1;
+            await refreshMonitorPanel(page);
+            window.__monitorInterruptContext = null;
+        }
         loadActiveTasks();
     } catch (error) {
         console.error('中断并继续失败:', error);
@@ -3535,6 +3544,33 @@ const monitorState = {
         totalPages: 0
     }
 };
+
+let monitorPollTimer = null;
+const MONITOR_POLL_INTERVAL_MS = 3000;
+
+function startMonitorPoll() {
+    stopMonitorPoll();
+    monitorPollTimer = setInterval(function () {
+        const page = document.getElementById('page-mcp-monitor');
+        if (!page || !page.classList.contains('active')) {
+            stopMonitorPoll();
+            return;
+        }
+        if (document.hidden) {
+            return;
+        }
+        if (typeof refreshMonitorPanel === 'function') {
+            refreshMonitorPanel().catch(function () { /* ignore */ });
+        }
+    }, MONITOR_POLL_INTERVAL_MS);
+}
+
+function stopMonitorPoll() {
+    if (monitorPollTimer) {
+        clearInterval(monitorPollTimer);
+        monitorPollTimer = null;
+    }
+}
 
 function openMonitorPanel() {
     // 切换到MCP监控页面

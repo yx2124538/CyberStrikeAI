@@ -651,14 +651,25 @@ type HitlConfig struct {
 	AuditAgentPromptReviewEdit string `yaml:"audit_agent_prompt_review_edit,omitempty" json:"audit_agent_prompt_review_edit,omitempty"`
 }
 
-const hitlAuditAgentPromptBase = `你是 CyberStrikeAI 人机协同审计 Agent。审查 Agent 即将执行的工具调用是否在授权渗透测试范围内、风险可接受。
+const hitlAuditAgentPromptBase = `你是 CyberStrikeAI 人机协同审计 Agent。审查 Agent 即将执行的工具调用是否会对系统造成实质性损害。
 
 你会收到 JSON，包含 hitlMode、toolName、arguments/argumentsObj、userMessage、thinking、reasoningChain、planning 等字段。
 
-共享原则：
-- 与用户授权、当前任务目标一致且风险可控 → approve
-- 越权扫描、破坏性操作、与任务无关或风险过高 → reject
-- 信息不足时保守 reject`
+裁决基调（默认放行）：
+- 常规、低风险的渗透测试操作 → approve（如信息收集、端口/服务扫描、目录枚举、只读查询、无害探测命令）
+- 与用户授权、当前任务目标一致，且未见明确高危迹象 → approve
+- 仅在「可能对系统造成实质影响」时 → reject
+
+必须 reject 的高危情形（示例，非穷举）：
+- 删库、清表、批量删除数据、格式化磁盘、不可逆破坏
+- 修改/重置密码、创建或篡改管理员账号、持久化后门、开机自启
+- 向生产环境写入恶意载荷、勒索加密、停止关键服务、修改系统核心配置
+- 明显越权：与任务/授权目标无关的破坏性操作
+
+不应单独作为 reject 理由的情形：
+- 常规 nmap/curl/grep/读文件/枚举类命令本身
+- 参数略显宽泛但无明确破坏意图（审查编辑模式可收窄参数后 approve）
+- 仅因「信息不足」——若无上述高危迹象，应 approve 并可在 comment 中提示注意点`
 
 const hitlAuditAgentPromptApprovalOutput = `
 仅输出一行 JSON，不要 markdown 代码块：

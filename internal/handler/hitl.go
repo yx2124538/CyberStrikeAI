@@ -158,17 +158,14 @@ func (m *HITLManager) DeactivateConversation(conversationID string) {
 	m.mu.Unlock()
 }
 
-// hitlConfigGlobalToolWhitelist 来自 config.yaml hitl.tool_whitelist（去重、去空）。
+// hitlConfigGlobalToolWhitelist 来自 config.yaml hitl.tool_whitelist（去重、去空），并合并内置元工具免审批项。
 func (h *AgentHandler) hitlConfigGlobalToolWhitelist() []string {
 	if h == nil || h.config == nil {
-		return nil
+		return multiagent.MergeHitlExemptMetaTools(nil)
 	}
 	raw := h.config.Hitl.ToolWhitelist
-	if len(raw) == 0 {
-		return nil
-	}
 	seen := make(map[string]struct{})
-	out := make([]string, 0, len(raw))
+	out := make([]string, 0, len(raw)+len(multiagent.HitlExemptMetaTools))
 	for _, t := range raw {
 		n := strings.ToLower(strings.TrimSpace(t))
 		if n == "" {
@@ -180,44 +177,35 @@ func (h *AgentHandler) hitlConfigGlobalToolWhitelist() []string {
 		seen[n] = struct{}{}
 		out = append(out, strings.TrimSpace(t))
 	}
-	return out
+	return multiagent.MergeHitlExemptMetaTools(out)
 }
 
-// hitlRequestWithMergedConfigWhitelist 将会话/API 中的白名单与 config.yaml 全局白名单合并（并集），仅用于运行时 Activate；不写入数据库。
+// hitlRequestWithMergedConfigWhitelist 将会话/API 中的白名单与 config.yaml 全局白名单及内置元工具免审批项合并（并集），仅用于运行时 Activate；不写入数据库。
 func (h *AgentHandler) hitlRequestWithMergedConfigWhitelist(req *HITLRequest) *HITLRequest {
-	gw := h.hitlConfigGlobalToolWhitelist()
-	if len(gw) == 0 {
-		return req
-	}
 	if req == nil {
 		return nil
 	}
 	seen := make(map[string]struct{})
-	union := make([]string, 0, len(gw)+len(req.SensitiveTools))
-	for _, t := range gw {
+	union := make([]string, 0, len(req.SensitiveTools)+16)
+	add := func(t string) {
 		n := strings.ToLower(strings.TrimSpace(t))
 		if n == "" {
-			continue
+			return
 		}
 		if _, ok := seen[n]; ok {
-			continue
+			return
 		}
 		seen[n] = struct{}{}
 		union = append(union, strings.TrimSpace(t))
+	}
+	for _, t := range h.hitlConfigGlobalToolWhitelist() {
+		add(t)
 	}
 	for _, t := range req.SensitiveTools {
-		n := strings.ToLower(strings.TrimSpace(t))
-		if n == "" {
-			continue
-		}
-		if _, ok := seen[n]; ok {
-			continue
-		}
-		seen[n] = struct{}{}
-		union = append(union, strings.TrimSpace(t))
+		add(t)
 	}
 	out := *req
-	out.SensitiveTools = union
+	out.SensitiveTools = multiagent.MergeHitlExemptMetaTools(union)
 	return &out
 }
 

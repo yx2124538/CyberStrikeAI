@@ -43,6 +43,9 @@ type AgentTask struct {
 	// activeEinoExecuteAbortNote AbortActiveEinoExecute 写入的用户说明，由 execute 收尾时合并进工具结果
 	activeEinoExecuteAbortNote string
 
+	// hitlCognition 本轮运行中供 HITL/审计 Agent 读取的上下文（用户原话 + 思考，不含会话历史）
+	hitlCognition *hitlCognitionState
+
 	cancel func(error)
 }
 
@@ -354,6 +357,7 @@ func (m *AgentTaskManager) StartTask(conversationID, message string, cancel cont
 	}
 
 	m.tasks[conversationID] = task
+	task.hitlCognition = &hitlCognitionState{UserMessage: strings.TrimSpace(message)}
 	return task, nil
 }
 

@@ -1766,6 +1766,20 @@ func mergeHitlToolWhitelistSlice(existing, add []string) []string {
 	return out
 }
 
+// SetHitlToolWhitelist 将全局免审批工具白名单整表写入 config.yaml（替换，非合并）。
+func (h *ConfigHandler) SetHitlToolWhitelist(tools []string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.config.Hitl.ToolWhitelist = mergeHitlToolWhitelistSlice(nil, tools)
+	if err := h.saveConfig(); err != nil {
+		return err
+	}
+	h.logger.Info("HITL 全局工具白名单已写入配置文件",
+		zap.Int("count", len(h.config.Hitl.ToolWhitelist)),
+	)
+	return nil
+}
+
 // MergeHitlToolWhitelistIntoConfig 将会话侧栏提交的免审批工具名合并进内存配置并写入 config.yaml（与全局白名单去重规则一致：小写键、保留首次出现的原始大小写）。
 func (h *ConfigHandler) MergeHitlToolWhitelistIntoConfig(add []string) error {
 	h.mu.Lock()
@@ -1786,6 +1800,21 @@ func updateHitlConfig(doc *yaml.Node, cfg config.HitlConfig) {
 	hitlNode := ensureMap(root, "hitl")
 	// flow 样式 [a, b, c] 单行展示，工具多时比块序列省行数
 	setFlowStringSliceInMap(hitlNode, "tool_whitelist", cfg.ToolWhitelist)
+	setStringInMap(hitlNode, "audit_agent_prompt", cfg.AuditAgentPrompt)
+	setStringInMap(hitlNode, "audit_agent_prompt_review_edit", cfg.AuditAgentPromptReviewEdit)
+}
+
+// UpdateHitlAuditAgentStrategy 更新审批/审查编辑两套审计 Agent 提示词并写入 config.yaml。
+func (h *ConfigHandler) UpdateHitlAuditAgentStrategy(approvalPrompt, reviewEditPrompt string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.config.Hitl.AuditAgentPrompt = strings.TrimSpace(approvalPrompt)
+	h.config.Hitl.AuditAgentPromptReviewEdit = strings.TrimSpace(reviewEditPrompt)
+	if err := h.saveConfig(); err != nil {
+		return err
+	}
+	h.logger.Info("HITL 审计 Agent 提示词已写入配置文件")
+	return nil
 }
 
 func updateRobotsConfig(doc *yaml.Node, cfg config.RobotsConfig) {

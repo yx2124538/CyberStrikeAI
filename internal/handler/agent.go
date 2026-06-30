@@ -77,6 +77,13 @@ type responsePlanAgg struct {
 	b    strings.Builder
 }
 
+// thinkingBuf aggregates thinking_stream_* / reasoning_chain_stream_* before flush to process_details.
+type thinkingBuf struct {
+	b         strings.Builder
+	meta      map[string]interface{}
+	persistAs string // "thinking" | "reasoning_chain"
+}
+
 func normalizeProcessDetailText(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
@@ -179,6 +186,8 @@ type AgentHandler struct {
 	batchCronParser   cron.Parser
 	// hitlWhitelistSaver 侧栏「应用」HITL 时将会话增量白名单合并写入 config.yaml（可选）
 	hitlWhitelistSaver HitlToolWhitelistSaver
+	hitlStrategySaver  HitlAuditStrategySaver
+	auditLLM           *openai.Client
 	audit              *audit.Service
 }
 
@@ -218,9 +227,10 @@ func (h *AgentHandler) cancelActiveMCPToolForConversation(conversationID string)
 	}
 }
 
-// HitlToolWhitelistSaver 合并 HITL 免审批工具到全局配置并落盘
+// HitlToolWhitelistSaver 合并/设置 HITL 免审批工具到全局配置并落盘
 type HitlToolWhitelistSaver interface {
 	MergeHitlToolWhitelistIntoConfig(add []string) error
+	SetHitlToolWhitelist(tools []string) error
 }
 
 // NewAgentHandler 创建新的Agent处理器
@@ -236,6 +246,11 @@ func NewAgentHandler(agent *agent.Agent, db *database.DB, cfg *config.Config, lo
 	bus := NewTaskEventBus()
 	tm := NewAgentTaskManager()
 	tm.SetTaskEventBus(bus)
+	llmHTTP := &http.Client{Timeout: 2 * time.Minute}
+	var llmCfg *config.OpenAIConfig
+	if cfg != nil {
+		llmCfg = &cfg.OpenAI
+	}
 	handler := &AgentHandler{
 		agent:            agent,
 		db:               db,
@@ -246,6 +261,7 @@ func NewAgentHandler(agent *agent.Agent, db *database.DB, cfg *config.Config, lo
 		config:           cfg,
 		hitlManager:      NewHITLManager(db, logger),
 		batchCronParser:  cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor),
+		auditLLM:         openai.NewClient(llmCfg, llmHTTP, logger),
 	}
 	tm.SetToolCanceler(handler.cancelActiveMCPToolForConversation)
 	if err := handler.hitlManager.EnsureSchema(); err != nil {
@@ -320,6 +336,7 @@ func chatReasoningToClientIntent(r *ChatReasoningRequest) *reasoning.ClientInten
 type HITLRequest struct {
 	Enabled        bool     `json:"enabled"`
 	Mode           string   `json:"mode,omitempty"`
+	Reviewer       string   `json:"reviewer,omitempty"` // human | audit_agent
 	SensitiveTools []string `json:"sensitiveTools,omitempty"`
 	TimeoutSeconds int      `json:"timeoutSeconds,omitempty"`
 }
@@ -849,11 +866,6 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 
 	// thinking_stream_*（ReAct 等助手正文流）与 reasoning_chain_stream_*（Eino ReasoningContent）：
 	// 不逐条落库，按 streamId 聚合，flush 时分别落 thinking / reasoning_chain。
-	type thinkingBuf struct {
-		b         strings.Builder
-		meta      map[string]interface{}
-		persistAs string // "thinking" | "reasoning_chain"
-	}
 	thinkingStreams := make(map[string]*thinkingBuf) // streamId -> buf
 	flushedThinking := make(map[string]bool)         // streamId -> flushed
 	seenToolCallSigs := make(map[string]string)      // toolCallId -> payload signature
@@ -866,6 +878,12 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 	// response_start + response_delta：前端时间线显示为「📝 规划中」（monitor.js），不落逐条 delta；
 	// 聚合为一条 planning 写入 process_details，刷新后与线上一致。
 	var respPlan responsePlanAgg
+	if assistantMessageID != "" {
+		h.tasks.SetHitlAssistantMessageID(conversationID, assistantMessageID)
+	}
+	syncHitlCognition := func() {
+		h.syncHitlCognitionFromProgress(conversationID, assistantMessageID, thinkingStreams, &respPlan)
+	}
 	flushResponsePlan := func() {
 		if assistantMessageID == "" {
 			return
@@ -885,6 +903,7 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 		if err := h.db.AddProcessDetail(assistantMessageID, conversationID, "planning", content, data); err != nil {
 			h.logger.Warn("保存过程详情失败", zap.Error(err), zap.String("eventType", "planning"))
 		}
+		syncHitlCognition()
 		respPlan.meta = nil
 		respPlan.b.Reset()
 	}
@@ -921,6 +940,7 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 			}
 			flushedThinking[sid] = true
 		}
+		syncHitlCognition()
 	}
 
 	return func(eventType, message string, data interface{}) {
@@ -978,6 +998,25 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 						}
 					}
 				}
+			}
+		}
+
+		if eventType == "tool_result" {
+			if dataMap, ok := data.(map[string]interface{}); ok {
+				toolName, _ := dataMap["toolName"].(string)
+				toolCallID, _ := dataMap["toolCallId"].(string)
+				success := true
+				if v, ok := dataMap["success"].(bool); ok {
+					success = v
+				}
+				resultText := ""
+				if r, ok := dataMap["result"].(string); ok {
+					resultText = r
+				}
+				if strings.TrimSpace(resultText) == "" {
+					resultText = message
+				}
+				h.recordHitlToolExecutionResult(conversationID, toolCallID, toolName, success, resultText)
 			}
 		}
 
@@ -1188,6 +1227,7 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 					respPlan.meta[k] = v
 				}
 			}
+			syncHitlCognition()
 			return
 		}
 		if eventType == "response" {
@@ -1257,6 +1297,7 @@ func (h *AgentHandler) createProgressCallback(runCtx context.Context, cancelRun 
 					}
 				}
 			}
+			syncHitlCognition()
 			return
 		}
 

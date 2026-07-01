@@ -25060,7 +25060,7 @@ button.chat-files-dropdown-item:hover:not(:disabled) {
     align-items: flex-start;
     justify-content: space-between;
     gap: 20px;
-    padding: 20px 24px 18px;
+    padding: 16px 24px 14px;
     border-bottom: 1px solid #eef2f7;
     background: #fff;
 }
@@ -25119,10 +25119,28 @@ button.chat-files-dropdown-item:hover:not(:disabled) {
     border-color: #e2e8f0;
 }
 .projects-detail-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
     margin: 0;
-    font-size: 0.8125rem;
-    color: #94a3b8;
-    line-height: 1.4;
+    padding: 5px 10px;
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.2;
+    white-space: nowrap;
+    border-radius: 999px;
+    background: #f8fafc;
+    border: 1px solid #e8edf3;
+    font-variant-numeric: tabular-nums;
+}
+.projects-detail-meta-icon {
+    flex-shrink: 0;
+    opacity: 0.65;
+}
+.projects-detail-meta-time {
+    font-weight: 500;
+    color: #64748b;
 }
 .projects-detail-desc {
     margin: 0;
@@ -25188,8 +25206,7 @@ button.chat-files-dropdown-item:hover:not(:disabled) {
     flex-wrap: wrap;
     gap: 8px;
     align-items: center;
-    align-self: flex-start;
-    margin-top: 2px;
+    align-self: center;
 }
 @media (max-width: 860px) {
     .projects-detail-header {

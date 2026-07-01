@@ -722,9 +722,12 @@ function updateProjectStatusPill(status) {
 
 function renderProjectDetailMeta(updatedAt) {
     const metaEl = document.getElementById('projects-detail-meta');
-    if (!metaEl) return;
+    const timeEl = document.getElementById('projects-detail-meta-time');
+    if (!metaEl || !timeEl) return;
     const time = formatProjectTime(updatedAt);
-    metaEl.textContent = tpFmt('projects.updatedPrefix', `Updated ${time}`, { time });
+    const full = tpFmt('projects.updatedPrefix', `Updated ${time}`, { time });
+    timeEl.textContent = time;
+    metaEl.title = full;
 }
 
 function refreshProjectDetailMetaI18n() {

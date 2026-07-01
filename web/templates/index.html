@@ -1713,10 +1713,13 @@
                                                 <span class="projects-stat-chip projects-stat-chip--warn" id="project-stat-sparse" hidden>0 待补全</span>
                                             </div>
                                         </div>
-                                        <p id="projects-detail-meta" class="projects-detail-meta"></p>
                                         <p id="projects-detail-desc" class="projects-detail-desc" hidden></p>
                                     </div>
                                     <div class="projects-detail-header-actions">
+                                        <span id="projects-detail-meta" class="projects-detail-meta" aria-live="polite">
+                                            <svg class="projects-detail-meta-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                            <span id="projects-detail-meta-time" class="projects-detail-meta-time"></span>
+                                        </span>
                                         <button type="button" class="btn-secondary btn-small" onclick="openVulnerabilitiesForProject()" data-i18n="projects.vulnerabilityManagement">漏洞管理</button>
                                         <button type="button" class="btn-primary btn-small" onclick="showAddFactModal()" data-i18n="projects.addFactCta">+ 添加事实</button>
                                     </div>

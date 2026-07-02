@@ -474,6 +474,7 @@ func RunDeepAgent(
 			ProjectID:            projectID,
 			Logger:               logger,
 			ModelName:            appCfg.OpenAI.Model,
+			// 与 Deep/Supervisor 主代理同源：patch / reduction / toolsearch / plantask（见 buildPlanExecuteExecutorHandlers）。
 			ExecPreMiddlewares:   mainOrchestratorPre,
 			SkillMiddleware:      einoSkillMW,
 			FilesystemMiddleware: peFsMw,

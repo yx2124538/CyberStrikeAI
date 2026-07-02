@@ -185,7 +185,8 @@ multi_agent:
     disable: false # true：不注册 skill 渐进式披露中间件，也不挂本机 FS/Shell 工具；false：按下方开关加载
     filesystem_tools: true # true：注册 read_file/glob/grep/write/edit/execute（授权环境慎用）；false：仅 skill，不暴露本机读写与 Shell
     skill_tool_name: skill # 模型侧可调用的「加载技能」工具名，一般保持 skill；与技能包文档中的调用名一致即可
-  # Eino ADK 中间件与 Deep/Supervisor 调参（结构体见 internal/config/config.go → MultiAgentEinoMiddlewareConfig）
+  # Eino ADK 中间件与 Deep/Supervisor/plan_execute Executor 调参（结构体见 internal/config/config.go → MultiAgentEinoMiddlewareConfig）
+  # plan_execute：下列 patch/reduction/tool_search/plantask 等同样作用于 Executor（经 ExecPreMiddlewares）；Planner/Replanner 不挂 MCP 前置中间件。
   eino_middleware:
     patch_tool_calls: true # true：修补历史中无 tool_result 的悬空 tool_call（流式中断/重试后更稳）；false：关闭；字段省略时默认等同 true
     tool_search_enable: true # true：工具数 ≥ min 时启用 tool_search，仅前 N 个工具常驻，其余按正则按需解锁，省 token、减误选；false：全量工具进上下文
@@ -282,9 +283,17 @@ knowledge:
   retrieval:
     top_k: 5 # 检索返回的Top-K结果数量
     similarity_threshold: 0.4 # 余弦相似度阈值（0-1），低于此值的结果将被过滤
-    # 检索后处理：固定正文规范化去重；上下文预算；可选代码注入 DocumentReranker 做重排
+    # Eino MultiQuery：LLM 改写查询后多路向量检索再融合（始终启用）
+    multi_query:
+      max_queries: 4 # 改写变体上限（含语义覆盖）；建议 3~4
+    # 精排（始终启用）：dashscope 用 gte-rerank；其他 OpenAI 兼容端点走 /v1/rerank
+    rerank:
+      provider: "" # 空=按 base_url 推断：dashscope | cohere
+      model: "" # 空=dashscope→gte-rerank，cohere→rerank-multilingual-v3.0
+      base_url: "" # 留空则用 embedding / openai 的 base_url
+      api_key: "" # 留空则用 embedding / openai 的 api_key
     post_retrieve:
-      prefetch_top_k: 0 # 0 与 top_k 相同；可设为 15~30 以便去重后仍填满 top_k
+      prefetch_top_k: 20 # 每条 MultiQuery 变体的向量候选数；0=内置 max(top_k*4,20)
       max_context_chars: 0 # 0 不限制；否则返回的正文总 Unicode 字符上限（整段 chunk）
       max_context_tokens: 0 # 0 不限制；tiktoken 总 token 上限
     sub_index_filter: ""

@@ -1537,10 +1537,13 @@
                                         </div>
                                     </div>
                                 </label>
-                                <div class="search-box">
-                                    <input type="text" id="knowledge-search" data-i18n="knowledgePage.searchPlaceholder" data-i18n-attr="placeholder" placeholder="搜索知识..." oninput="handleKnowledgeSearchInput()" onkeydown="if(event.key==='Enter') searchKnowledgeItems()" />
-                                    <button class="btn-search" onclick="searchKnowledgeItems()" data-i18n="common.search" data-i18n-attr="title" title="搜索">🔍</button>
-                                </div>
+                                <label class="knowledge-search-field">
+                                    <span data-i18n="common.search">搜索</span>
+                                    <div class="search-box">
+                                        <input type="text" id="knowledge-search" data-i18n="knowledgePage.searchPlaceholder" data-i18n-attr="placeholder" placeholder="搜索知识..." oninput="handleKnowledgeSearchInput()" onkeydown="if(event.key==='Enter') searchKnowledgeItems()" />
+                                        <button class="btn-search" onclick="searchKnowledgeItems()" data-i18n="common.search" data-i18n-attr="title" title="搜索">🔍</button>
+                                    </div>
+                                </label>
                             </div>
                         </div>
                         <div id="knowledge-items-list" class="knowledge-items-list">

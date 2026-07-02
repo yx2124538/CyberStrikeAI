@@ -11287,6 +11287,30 @@ tr.mcp-stats-tool-row[data-tool-name]:focus-visible {
     box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.1);
 }
 
+.knowledge-filters .knowledge-search-field {
+    flex: 1;
+    min-width: 200px;
+}
+
+.knowledge-filters .knowledge-search-field .search-box {
+    width: 100%;
+    flex: none;
+    align-items: stretch;
+}
+
+.knowledge-filters .custom-select-trigger,
+.knowledge-filters .search-box input,
+.knowledge-filters .search-box .btn-search {
+    height: 38px;
+    min-height: 38px;
+    box-sizing: border-box;
+}
+
+.knowledge-filters .search-box .btn-search {
+    padding: 0 12px;
+    flex-shrink: 0;
+}
+
 /* 自定义下拉组件样式 */
 .custom-select-wrapper {
     position: relative;

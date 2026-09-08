@@ -807,8 +807,11 @@ type ServerConfig struct {
 }
 
 type LogConfig struct {
-	Level  string `yaml:"level"`
-	Output string `yaml:"output"`
+	Level                   string `yaml:"level"`
+	Output                  string `yaml:"output"`
+	DiagnosticDir           string `yaml:"diagnostic_dir"`
+	DiagnosticDisabled      bool   `yaml:"diagnostic_disabled"`
+	DiagnosticRetentionDays int    `yaml:"diagnostic_retention_days"`
 }
 
 type MCPConfig struct {

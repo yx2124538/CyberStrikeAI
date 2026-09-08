@@ -25,7 +25,12 @@ func main() {
 	}
 
 	// 初始化日志（stdio 模式下使用 stderr 输出日志，避免干扰 JSON-RPC 通信）
-	log := logger.New(cfg.Log.Level, "stderr")
+	log := logger.New(cfg.Log.Level, "stderr", logger.DiagnosticOptions{
+		Dir:           cfg.Log.DiagnosticDir,
+		Disabled:      cfg.Log.DiagnosticDisabled,
+		RetentionDays: cfg.Log.DiagnosticRetentionDays,
+	})
+	defer log.Sync()
 
 	// 创建MCP服务器
 	mcpServer := mcp.NewServer(log.Logger)

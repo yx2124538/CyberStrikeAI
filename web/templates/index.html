@@ -31,11 +31,12 @@
             }
         })();
     </script>
-    <link rel="stylesheet" href="/static/css/style.css?v=20260819-4">
+    <link rel="stylesheet" href="/static/css/style.css?v=20260907-blocked-1">
+    <link rel="stylesheet" href="/static/css/tool-guard.css?v=20260907-7">
     <link rel="stylesheet" href="/static/css/chat-plan-progress.css?v=20260813-4">
     <link rel="stylesheet" href="/static/css/c2.css">
     <link rel="stylesheet" href="/static/vendor/xterm.css">
-    <script src="/static/js/router.js?v=20260819-3"></script>
+    <script src="/static/js/router.js?v=20260907-1"></script>
 </head>
 <body>
     <div id="login-overlay" class="login-overlay" style="display: none;">
@@ -210,14 +211,18 @@
                             <span data-i18n="nav.chat">对话</span>
                         </div>
                     </div>
-                    <div class="nav-item" data-page="hitl">
-                        <div class="nav-item-content" data-title="人机协同" onclick="switchPage('hitl')">
+                    <div class="nav-item nav-item-has-submenu" data-page="security" data-require-permission-any="hitl:read config:read">
+                        <div class="nav-item-content" data-title="安全防护" onclick="window.toggleSubmenu('security')" data-i18n="nav.security" data-i18n-attr="data-title" data-i18n-skip-text="true">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="9" cy="7" r="4"></circle>
-                                <path d="m16 11 2 2 4-4"></path>
+                                <rect x="4" y="10" width="16" height="11" rx="2"></rect>
+                                <path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"></path>
                             </svg>
-                            <span data-i18n="nav.hitl">人机协同</span>
+                            <span data-i18n="nav.security">安全防护</span>
+                            <svg class="submenu-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="m9 18 6-6-6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+                        <div class="nav-submenu">
+                            <div class="nav-submenu-item" data-page="hitl" data-require-permission="hitl:read" onclick="switchPage('hitl')" data-i18n="nav.hitl">人机协同</div>
+                            <div class="nav-submenu-item" data-page="tool-guard" data-require-permission="config:read" onclick="switchPage('tool-guard')" data-i18n="nav.toolGuard">调用拦截</div>
                         </div>
                     </div>
                     <div class="nav-section-label" role="presentation">
@@ -1352,6 +1357,93 @@
                     </div>
                 </div>
 
+                <div id="page-tool-guard" class="page tool-guard-page">
+                    <div class="page-header">
+                        <h2 data-i18n="toolGuard.title">调用拦截</h2>
+                        <div class="page-header-actions">
+                            <span id="tool-guard-save-state" class="tool-guard-save-state" aria-live="polite"></span>
+                            <button type="button" id="tool-guard-open-test" class="btn-secondary" data-require-permission="config:read" onclick="openToolGuardTest()" data-i18n="toolGuard.testEntry" disabled>全部规则验证</button>
+                            <button type="button" id="tool-guard-reset" class="btn-secondary" data-require-permission="config:write" onclick="resetToolGuardConfig()" data-i18n="toolGuard.reset" disabled>撤销修改</button>
+                            <button type="button" id="tool-guard-save" class="btn-primary" data-require-permission="config:write" onclick="saveToolGuardConfig()" data-i18n="toolGuard.save" disabled>保存并生效</button>
+                        </div>
+                    </div>
+                    <div class="page-content tool-guard-content">
+                        <div id="tool-guard-feedback" class="tool-guard-feedback" role="status" aria-live="polite" hidden></div>
+                        <section class="tool-guard-card tool-guard-policy" aria-labelledby="tool-guard-protection-status">
+                            <div class="tool-guard-policy-info">
+                                <span class="tool-guard-policy-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3 4 6v6c0 4 5 7 8 9 3-2 8-5 8-9V6l-8-3Z"/><path d="m8 12 3 3 5-6"/></svg></span>
+                                <div class="tool-guard-policy-copy">
+                                    <h3 id="tool-guard-protection-status" data-i18n="toolGuard.policyTitle">拦截策略</h3>
+                                    <p data-i18n="toolGuard.enableHint">保存后立即作用于后续工具调用，已开始的调用不受影响。</p>
+                                </div>
+                            </div>
+                            <label class="tool-guard-toggle tool-guard-switch"><input id="tool-guard-enabled" type="checkbox" onchange="changeToolGuardEnabled(this.checked)" disabled><span data-i18n="toolGuard.enabled">启用调用拦截</span></label>
+                        </section>
+                        <section class="tool-guard-card tool-guard-rules-card" aria-labelledby="tool-guard-rules-title">
+                            <div class="tool-guard-section-header">
+                                <div>
+                                    <div class="tool-guard-heading-line"><h3 id="tool-guard-rules-title" data-i18n="toolGuard.rulesTitle">拦截规则</h3><span id="tool-guard-rule-count" class="tool-guard-rule-count" aria-live="polite"></span></div>
+                                    <p data-i18n="toolGuard.listHint">点击规则查看和编辑，按列表顺序匹配。</p>
+                                </div>
+                                <button type="button" id="tool-guard-add" class="btn-secondary tool-guard-add" data-require-permission="config:write" onclick="addToolGuardRule()" disabled><span aria-hidden="true">＋</span><span data-i18n="toolGuard.addRule">添加规则</span></button>
+                            </div>
+                            <div id="tool-guard-rules" class="tool-guard-rules"></div>
+                            <details class="tool-guard-help">
+                                <summary><span data-i18n="toolGuard.helpTitle">规则说明与匹配范围</span><span class="tool-guard-chevron" aria-hidden="true">›</span></summary>
+                                <div class="tool-guard-help-body">
+                                    <p data-i18n="toolGuard.rulesHint">按顺序匹配已启用的规则，使用首条命中规则的提醒。正则采用 RE2 语法，保存和试运行时由服务端校验。</p>
+                                    <p data-i18n="toolGuard.messageHint">拦截提醒可使用 {match}（匹配文本）、{tool}（工具名称）、{rule}（规则名称）。</p>
+                                    <p data-i18n="toolGuard.description">在 MCP 工具执行前检查工具名称和参数，命中规则立即阻止调用。人机协同审批和工具白名单不会跳过此检查。</p>
+                                    <p data-i18n="toolGuard.scopeHint">正则仅检查调用中可见的文本；不会解析 IP 归属、重定向目标或工具读取的文件内容。域名规则不能保证覆盖所有间接访问。</p>
+                                </div>
+                            </details>
+                        </section>
+                        <details id="tool-guard-test-panel" class="tool-guard-card tool-guard-test-panel">
+                            <summary>
+                                <span class="tool-guard-test-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 3h6M10 3v6l-6 9a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3l-6-9V3M7 15h10"/></svg></span>
+                                <span class="tool-guard-disclosure-copy"><strong id="tool-guard-test-title" data-i18n="toolGuard.testTitle">全部规则验证</strong><span id="tool-guard-test-scope-summary" data-i18n="toolGuard.testSummary">按规则顺序和启停状态，检查整体拦截效果</span></span>
+                                <span class="tool-guard-chevron" aria-hidden="true">›</span>
+                            </summary>
+                            <div class="tool-guard-test-body">
+                                <p class="tool-guard-test-hint" data-i18n="toolGuard.testHint">使用页面上的当前配置（包括未保存修改），仅检查匹配结果，不执行任何工具。</p>
+                                <div class="tool-guard-field">
+                                    <label for="tool-guard-test-tool" data-i18n="toolGuard.testTool">工具名称</label>
+                                    <input id="tool-guard-test-tool" type="text" value="http_request" maxlength="512" oninput="invalidateToolGuardTest()" autocomplete="off" spellcheck="false">
+                                </div>
+                                <div class="tool-guard-field">
+                                    <label for="tool-guard-test-arguments" data-i18n="toolGuard.testArguments">工具参数（JSON 对象）</label>
+                                    <textarea id="tool-guard-test-arguments" rows="3" oninput="invalidateToolGuardTest()" spellcheck="false">{"url": "https://example.gov.cn"}</textarea>
+                                </div>
+                                <div class="tool-guard-test-actions"><button type="button" id="tool-guard-test" class="btn-secondary" data-require-permission="config:read" onclick="testToolGuardConfig()" data-i18n="toolGuard.test" disabled>测试匹配</button></div>
+                                <div id="tool-guard-test-result" class="tool-guard-test-result" role="status" aria-live="polite" hidden></div>
+                            </div>
+                        </details>
+                    </div>
+                    <dialog id="tool-guard-add-dialog" class="tool-guard-add-dialog" aria-labelledby="tool-guard-add-title" aria-describedby="tool-guard-add-description">
+                        <form novalidate onsubmit="event.preventDefault();commitToolGuardRule()">
+                            <header class="tool-guard-add-header">
+                                <div>
+                                    <h3 id="tool-guard-add-title" data-i18n="toolGuard.addDialogTitle">添加拦截规则</h3>
+                                    <p id="tool-guard-add-description" class="tool-guard-hint" data-i18n="toolGuard.addDialogHint">先配置规则，再用示例参数验证效果，确认后添加到列表。</p>
+                                </div>
+                                <button type="button" class="tool-guard-dialog-close" onclick="closeToolGuardRuleDialog()" data-i18n="toolGuard.closeDialog" data-i18n-attr="aria-label,title" data-i18n-skip-text="true" aria-label="关闭添加规则" title="关闭添加规则"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+                            </header>
+                            <div id="tool-guard-add-body" class="tool-guard-add-body">
+                                <div id="tool-guard-add-fields" class="tool-guard-add-fields"></div>
+                                <aside id="tool-guard-add-test" class="tool-guard-add-test"></aside>
+                                <div id="tool-guard-add-feedback" class="tool-guard-feedback" role="status" aria-live="polite" hidden></div>
+                            </div>
+                            <footer class="tool-guard-add-footer">
+                                <p class="tool-guard-hint" data-i18n="toolGuard.addToListHint">添加到列表后，点击页面顶部「保存并生效」应用规则。</p>
+                                <div class="tool-guard-dialog-actions">
+                                    <button type="button" class="btn-secondary" onclick="closeToolGuardRuleDialog()" data-i18n="toolGuard.cancelAdd">取消</button>
+                                    <button type="submit" id="tool-guard-add-confirm" class="btn-primary" data-require-permission="config:write" data-i18n="toolGuard.addToList">添加到列表</button>
+                                </div>
+                            </footer>
+                        </form>
+                    </dialog>
+                </div>
+
                 <div id="page-hitl" class="page">
                     <div class="page-header">
                         <h2 data-i18n="hitl.pageTitle">人机协同审批</h2>
@@ -1568,6 +1660,7 @@
                                                 <option value="running" data-i18n="mcpMonitor.statusRunning">执行中</option>
                                                 <option value="queued" data-i18n="mcpMonitor.statusQueued">排队中</option>
                                                 <option value="failed" data-i18n="mcpMonitor.statusFailed">失败</option>
+                                                <option value="blocked" data-i18n="mcpMonitor.statusBlocked">已拦截</option>
                                                 <option value="hard_timeout" data-i18n="mcpMonitor.statusHardTimeout">执行超时</option>
                                                 <option value="cancelled" data-i18n="mcpMonitor.statusCancelled">已终止</option>
                                                 <option value="orphaned" data-i18n="mcpMonitor.statusOrphaned">孤儿任务</option>
@@ -6695,7 +6788,7 @@
     <script src="/static/js/i18n.js"></script>
     <script src="/static/js/theme.js"></script>
     <script src="/static/js/builtin-tools.js"></script>
-    <script src="/static/js/auth.js?v=20260813-1"></script>
+    <script src="/static/js/auth.js?v=20260907-blocked-1"></script>
     <script src="/static/js/modal.js"></script>
     <script src="/static/js/notifications.js"></script>
     <script src="/static/js/info-collect.js?v=20260717-1"></script>
@@ -6703,10 +6796,11 @@
     <script src="/static/js/agents.js"></script>
     <script src="/static/js/dashboard.js"></script>
     <script src="/static/js/chat-scroll.js?v=20260815-1"></script>
-    <script src="/static/js/monitor.js?v=20260819-3"></script>
-    <script src="/static/js/chat.js?v=20260819-5"></script>
+    <script src="/static/js/monitor.js?v=20260907-blocked-1"></script>
+    <script src="/static/js/chat.js?v=20260907-blocked-1"></script>
     <script src="/static/js/chat-plan-progress.js?v=20260815-1"></script>
     <script src="/static/js/hitl.js?v=20260819-1"></script>
+    <script src="/static/js/tool-guard.js?v=20260907-7"></script>
     <script src="/static/js/settings.js?v=20260717-1"></script>
     <script src="/static/js/audit-datetime-picker.js"></script>
     <script src="/static/js/audit.js"></script>
@@ -6719,7 +6813,7 @@
     <script src="/static/js/fact-graph.js"></script>
     <script src="/static/js/projects.js?v=20260819-1"></script>
     <script src="/static/js/vulnerability.js?v=14"></script>
-    <script src="/static/js/webshell.js"></script>
+    <script src="/static/js/webshell.js?v=20260907-blocked-1"></script>
     <script src="/static/js/chat-files.js"></script>
     <script src="/static/js/tasks.js"></script>
     <script src="/static/js/workflow-package-client.js"></script>
@@ -6727,6 +6821,6 @@
     <script src="/static/js/roles.js"></script>
     <script src="/static/js/rbac.js"></script>
     <script src="/static/js/c2.js"></script>
-    <script src="/static/js/rbac-guards.js?v=20260717-1"></script>
+    <script src="/static/js/rbac-guards.js?v=20260907-1"></script>
 </body>
 </html>

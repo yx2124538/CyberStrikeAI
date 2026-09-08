@@ -155,6 +155,10 @@ func NewDB(dbPath string, logger *zap.Logger) (*DB, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("初始化表失败: %w", err)
 	}
+	if err := database.migrateLegacyToolGuardBlocks(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("迁移历史安全拦截记录失败: %w", err)
+	}
 	database.startPassiveCheckpointLoop("conversations")
 
 	return database, nil

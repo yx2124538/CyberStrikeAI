@@ -5,6 +5,7 @@ import (
 	"cyberstrike-ai/internal/logger"
 	"cyberstrike-ai/internal/mcp"
 	"cyberstrike-ai/internal/security"
+	"cyberstrike-ai/internal/toolguard"
 	"flag"
 	"fmt"
 	"os"
@@ -28,6 +29,12 @@ func main() {
 
 	// 创建MCP服务器
 	mcpServer := mcp.NewServer(log.Logger)
+	guard, err := toolguard.NewManager(cfg.EffectiveToolGuard())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "初始化调用拦截失败: %v\n", err)
+		os.Exit(1)
+	}
+	mcpServer.SetToolGuard(guard)
 
 	// 创建安全工具执行器
 	executor := security.NewExecutor(&cfg.Security, mcpServer, log.Logger)

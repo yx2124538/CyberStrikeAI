@@ -130,6 +130,19 @@ agent:
   # system_prompt_path: prompts/single-agent.md # 可选：单代理系统提示文件（相对本配置文件所在目录）；非空且可读时替换内置提示
 
   system_prompt_path: ""
+# 调用拦截：在「安全防护 → 调用拦截」编辑并保存后立即生效；与 HITL 审批白名单独立。
+# 旧配置省略 tool_guard 时也默认启用政府域名保护。手动修改 YAML 后需重启。
+tool_guard:
+  enabled: true
+  rules:
+    - id: government-domains
+      name: 政府网站保护
+      enabled: true
+      # Go/RE2 正则；命名捕获组 match 用于提醒中的 {match}。
+      pattern: '(?i)(?:^|[^\p{L}\p{M}\p{N}_.-])(?P<match>(?:(?:[\p{L}\p{M}\p{N}_*-]+\.)+gov(?:\.[\p{L}\p{M}\p{N}_*-]+)*|gov(?:\.[\p{L}\p{M}\p{N}_*-]+)+|\.gov(?:\.[\p{L}\p{M}\p{N}_*-]+)*)\.?)(?:$|[^\p{L}\p{M}\p{N}_.-])'
+      # 支持 {match}、{tool}、{rule}；留空使用通用提醒。
+      message: '识别到 {match}，禁止攻击政府网站。请检查目标与授权范围，并更换为已获授权的非政府目标。'
+
 # 人机协同（HITL）全局白名单：此处列出的工具始终免审批，与对话页「白名单工具（免审批，逗号分隔）」合并为并集；侧栏「应用」可合并写入本列表并立即生效。
 # 非白名单工具在审批方=审计 Agent 时，按会话 HITL 模式选用提示词：
 #   approval → audit_agent_prompt

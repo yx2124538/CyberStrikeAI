@@ -126,6 +126,7 @@ CyberStrikeAI connects planning, execution, human oversight, evidence, and repla
 ### Governance and audit
 
 - 🧑‍⚖️ **Human in the loop** provides approval modes, tool allowlists, audit-agent review, and traceable decisions.
+- 🛡️ **Call blocking** under Security adds configurable regex checks before MCP execution, reminder templates, and dry runs, with government-domain protection enabled by default. See [Tool call blocking](docs/en-US/tool-call-guard.md).
 - 🔐 **Platform RBAC** supports multiple users, system and custom roles, scoped permissions, ownership, and explicit assignments.
 - 🔒 **Security and audit** provide authenticated access, audit logs, SQLite persistence, and operational evidence retention.
 - 📄 **Result governance** stores the same capped tool result seen by the agent, protects resume paths from oversized historical output, and adds UI safeguards for large detail views. See [Tool Execution Governance](docs/en-US/tool-execution-governance.md).

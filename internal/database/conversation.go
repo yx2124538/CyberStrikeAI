@@ -1637,6 +1637,9 @@ func toolResultStatusFromPayload(payload map[string]interface{}, eventType strin
 	if eventType != "tool_result" {
 		return ""
 	}
+	if blocked, _ := payload["blocked"].(bool); blocked || strings.EqualFold(processDetailString(payload, "status"), "blocked") {
+		return "blocked"
+	}
 	if status := processDetailString(payload, "status"); strings.EqualFold(status, "background_running") {
 		return "background_running"
 	}

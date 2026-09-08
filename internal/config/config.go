@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"cyberstrike-ai/internal/termout"
+	"cyberstrike-ai/internal/toolguard"
 
 	"gopkg.in/yaml.v3"
 )
@@ -30,6 +31,7 @@ type Config struct {
 	Shodan      SpaceSearchConfig     `yaml:"shodan,omitempty" json:"shodan,omitempty"`
 	Agent       AgentConfig           `yaml:"agent"`
 	Hitl        HitlConfig            `yaml:"hitl,omitempty" json:"hitl,omitempty"`
+	ToolGuard   *toolguard.Config     `yaml:"tool_guard,omitempty" json:"tool_guard,omitempty"`
 	Security    SecurityConfig        `yaml:"security"`
 	Database    DatabaseConfig        `yaml:"database"`
 	Auth        AuthConfig            `yaml:"auth"`
@@ -1438,6 +1440,14 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
+	}
+	if cfg.ToolGuard != nil {
+		if err := validateToolGuardYAML(data); err != nil {
+			return nil, fmt.Errorf("调用拦截配置无效: %w", err)
+		}
+	}
+	if _, err := toolguard.Compile(cfg.EffectiveToolGuard()); err != nil {
+		return nil, fmt.Errorf("调用拦截配置无效: %w", err)
 	}
 
 	if cfg.Auth.SessionDurationHours <= 0 {

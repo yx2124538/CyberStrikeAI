@@ -87,6 +87,10 @@
         deleteRetrievalLog: 'knowledge:delete',
 
         // 设置 / MCP
+        saveToolGuardConfig: 'config:write',
+        addToolGuardRule: 'config:write',
+        resetToolGuardConfig: 'config:write',
+        changeToolGuardEnabled: 'config:write',
         applySettings: 'config:write',
         saveToolsConfig: 'config:write',
         saveExternalMCP: 'mcp:write',

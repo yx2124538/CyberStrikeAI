@@ -46405,3 +46405,44 @@ html[data-theme="dark"] .hitl-inline-approval.hitl-inline-approval--merged {
         animation: none;
     }
 }
+
+/* A policy block is an intentional refusal before execution, separate from a tool failure. */
+:root { --tool-blocked-color: #a65d08; }
+html[data-theme="dark"] { --tool-blocked-color: #f4bc62; }
+.tool-status-badge.tool-status-blocked,
+.status-chip.status-blocked,
+.monitor-status-chip.blocked,
+.mcp-stats-kpi__chip.is-blocked,
+.mcp-stats-tool-item__pill.is-blocked {
+    color: var(--tool-blocked-color);
+    background: rgba(217, 146, 36, .12);
+    border: 1px solid rgba(217, 146, 36, .32);
+}
+.timeline-item-tool_call.tool-call-blocked,
+.timeline-item-tool_result.tool-call-blocked {
+    border: 1px solid rgba(217, 146, 36, .32);
+    border-left: 3px solid var(--tool-blocked-color);
+    background: rgba(217, 146, 36, .065);
+}
+.tool-result-section.blocked .tool-result,
+#mcp-detail-modal .code-block.blocked,
+.mcp-detail-btn[data-status="blocked"] {
+    color: var(--text-primary);
+    border-color: rgba(217, 146, 36, .32);
+    background: rgba(217, 146, 36, .055);
+}
+.message.assistant-turn-with-process .timeline-item.tool-call-blocked::before,
+.message.progress-message .timeline-item.tool-call-blocked::before {
+    background: var(--tool-blocked-color);
+}
+.mcp-stats-blocked-note,
+.mcp-stats-timeline-moment__blocked {
+    color: var(--tool-blocked-color);
+}
+.mcp-stats-blocked-note { display: inline-block; margin-left: 8px; font-size: .75rem; }
+.mcp-stats-timeline-bar-blocked { fill: #d99224; opacity: .8; }
+.mcp-stats-timeline-bar-blocked.is-hover { opacity: 1; }
+.mcp-stats-timeline-line--blocked { fill: none; stroke: #d99224; stroke-width: 1.5; }
+.mcp-stats-timeline__legend-item--blocked::before { background: #d99224; }
+.mcp-stats-rate.is-muted,
+.mcp-stats-tool-item__rate.is-muted { color: var(--text-muted); }

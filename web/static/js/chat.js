@@ -1891,6 +1891,8 @@ function initChatPrimaryActionButton() {
     updateChatPrimaryActionState();
 }
 
+document.addEventListener('DOMContentLoaded', initChatPrimaryActionButton);
+
 function closeChatReasoningPanel() {
     const wrap = document.getElementById('chat-reasoning-wrapper');
     const toggle = document.getElementById('conversation-reasoning-toggle');
@@ -4355,8 +4357,10 @@ function renderProcessDetails(messageId, processDetails, options) {
                 : { kind: (data.success !== false ? 'success' : 'error'), isError: data.success === false };
             const backgroundRunning = displayState.kind === 'background_running';
             const success = !displayState.isError && !backgroundRunning;
-            const statusIcon = backgroundRunning ? '⏳' : (success ? '✅' : '❌');
-            const execText = backgroundRunning
+            const statusIcon = displayState.kind === 'blocked' ? '🛡' : (backgroundRunning ? '⏳' : (success ? '✅' : '❌'));
+            const execText = displayState.kind === 'blocked'
+                ? (typeof window.t === 'function' ? window.t('chat.toolExecBlocked', { name: escapeHtml(toolName) }) : '工具 ' + escapeHtml(toolName) + ' 已拦截')
+                : backgroundRunning
                 ? ((typeof window.getBackgroundRunningToolLabel === 'function' ? window.getBackgroundRunningToolLabel() : '后台执行中') + ': ' + escapeHtml(toolName))
                 : (success ? (typeof window.t === 'function' ? window.t('chat.toolExecComplete', { name: escapeHtml(toolName) }) : '工具 ' + escapeHtml(toolName) + ' 执行完成') : (typeof window.t === 'function' ? window.t('chat.toolExecFailed', { name: escapeHtml(toolName) }) : '工具 ' + escapeHtml(toolName) + ' 执行失败'));
             let execLine = statusIcon + ' ' + execText;
@@ -5399,7 +5403,7 @@ function normalizeToolExecutionSummary(raw) {
     if (raw && typeof raw === 'object') {
         return {
             toolName: raw.toolName || raw.name || '',
-            status: raw.status || ''
+            status: typeof window.getToolExecutionDisplayStatus === 'function' ? window.getToolExecutionDisplayStatus(raw) : (raw.status || '')
         };
     }
     return { toolName: '', status: '' };
@@ -5411,6 +5415,7 @@ function getToolExecutionStatusLabel(status) {
         const keyMap = {
             completed: 'mcpMonitor.statusSuccess',
             failed: 'mcpMonitor.statusFailed',
+            blocked: 'mcpMonitor.statusBlocked',
             running: 'mcpMonitor.statusRunning',
             cancelled: 'mcpMonitor.statusCancelled',
             pending: 'mcpMonitor.statusPending',
@@ -5425,6 +5430,7 @@ function getToolExecutionStatusLabel(status) {
     const fallback = {
         completed: '成功',
         failed: '失败',
+        blocked: '已拦截',
         running: '运行中',
         cancelled: '已取消',
         pending: '等待中',
@@ -5504,7 +5510,8 @@ function formatMCPResultJsonForDisplay(result) {
     if (!result) return '{}';
     const payload = {
         content: result.content,
-        isError: !!result.isError
+        isError: !!result.isError,
+        ...(result.blocked === true ? { blocked: true } : {})
     };
     return JSON.stringify(payload, null, 2);
 }
@@ -5552,12 +5559,13 @@ function renderMCPDetailModal(exec) {
     document.getElementById('detail-tool-name').textContent = exec.toolName || (typeof window.t === 'function' ? window.t('mcpDetailModal.unknown') : 'Unknown');
     document.getElementById('detail-execution-id').textContent = exec.id || 'N/A';
     const statusEl = document.getElementById('detail-status');
-    const normalizedStatus = (exec.status || 'unknown').toLowerCase();
-    statusEl.textContent = getStatusText(exec.status);
+    const normalizedStatus = typeof window.getToolExecutionDisplayStatus === 'function' ? window.getToolExecutionDisplayStatus(exec) : (exec.status || 'unknown').toLowerCase();
+    const blocked = normalizedStatus === 'blocked';
+    statusEl.textContent = getStatusText(normalizedStatus);
     const statusClass = normalizedStatus === 'background_running' ? 'running' : normalizedStatus;
     statusEl.className = `status-chip status-${statusClass}`;
     try {
-        statusEl.dataset.detailStatus = (exec.status || '') + '';
+        statusEl.dataset.detailStatus = normalizedStatus;
     } catch (e) { /* ignore */ }
     const detailTimeLocale = (typeof window.__locale === 'string' && window.__locale.startsWith('zh')) ? 'zh-CN' : 'en-US';
     const detailTimeEl = document.getElementById('detail-time');
@@ -5592,12 +5600,26 @@ function renderMCPDetailModal(exec) {
         errorElement.textContent = '';
     }
     setMCPResultDetailTabs('raw', false);
+    const resultTabLabel = document.querySelector('#detail-result-tab-success [data-i18n]');
+    if (resultTabLabel) {
+        const key = blocked ? 'mcpDetailModal.blockReason' : 'mcpDetailModal.correctInfo';
+        resultTabLabel.dataset.i18n = key;
+        resultTabLabel.textContent = typeof window.t === 'function' ? window.t(key) : (blocked ? '拦截原因' : '正确信息');
+    }
 
     if (exec.result) {
         const agentVisibleText = formatMCPDetailText(extractMCPResultText(exec.result));
         const emptyText = typeof window.t === 'function' ? window.t('mcpDetailModal.execSuccessNoContent') : '执行成功，未返回可展示的文本内容。';
 
-        if (exec.result.isError) {
+        if (blocked) {
+            responseElement.className = 'code-block blocked';
+            responseElement.textContent = formatMCPResultJsonForDisplay(exec.result);
+            if (successElement) {
+                successElement.className = 'code-block blocked';
+                successElement.textContent = agentVisibleText || exec.error || getStatusText('blocked');
+            }
+            setMCPResultDetailTabs('success', true);
+        } else if (exec.result.isError) {
             responseElement.className = 'code-block error';
             responseElement.textContent = formatMCPResultJsonForDisplay(exec.result);
             if (successElement) {
